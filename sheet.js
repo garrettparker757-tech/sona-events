@@ -6,7 +6,7 @@
   var PAGE = { w: 8.5, h: 11 }, EDGE = 0.118;
   var DEFAULTS = {
     cut: 2.75, corner: 0.728, photo: 2.16, face: 2.0,
-    outline: true, outlinePt: 1.5,
+    outline: true, outlinePt: 1,   /* the Canva template used 1.5; thinned on request */
     sideText: 'Sona Magnets Co.', bottomText: 'made in RVA', textPt: 6,
     inset: { top: 0.256, side: 0.262, bottom: 0.272 },
     top: 0.147, gapX: 0.066, gapY: 0.134
