@@ -6,7 +6,8 @@
   var VIEWS = ['view-loading', 'view-login', 'view-denied', 'view-events', 'view-event'];
   var state = {
     events: [], event: null, orders: [], sig: '', timer: null, blobs: new Map(), pending: null, busy: false,
-    known: null, fresh: {}, unseen: 0, filter: 'todo', query: '', sound: false, audio: null, pics: new Map(), fixing: null
+    known: null, fresh: {}, unseen: 0, filter: 'todo', query: '', sound: false, audio: null, pics: new Map(), fixing: null,
+    kind: 'market', overlay: null
   };
   var sb = null;
   var TITLE = 'Sona Events staff';
@@ -93,6 +94,10 @@
   async function removeEvent(ev, say) {
     var out = await purgeEvent(ev, say);
     say('Removing the event.');
+    var files = await sb.storage.from('overlays').list(ev.id, { limit: 100 });
+    if (!files.error && files.data && files.data.length) {
+      await sb.storage.from('overlays').remove(files.data.map(function (f) { return ev.id + '/' + f.name; }));
+    }
     var del = await sb.from('events').delete().eq('id', ev.id);
     if (del.error) throw del.error;
     return out;
@@ -112,12 +117,30 @@
     if (lostSession(res.error)) return;
     if (res.error) { note('events-msg', 'Could not load events. Reload the page.', 'bad'); return; }
     state.events = res.data;
+    renderEvents();
+  }
+  function kindOf(ev) { return ev.kind === 'private' ? 'private' : 'market'; }
+  function priced() { return !state.event || state.event.show_prices !== false; }
+  function renderEvents() {
+    var special = state.kind === 'private';
+    var count = { market: 0, 'private': 0 };
+    state.events.forEach(function (ev) { count[kindOf(ev)]++; });
+    Array.prototype.forEach.call(document.querySelectorAll('.seg button[data-kind]'), function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.kind === state.kind));
+      b.textContent = (b.dataset.kind === 'private' ? 'Special events' : 'Markets') + ' (' + count[b.dataset.kind] + ')';
+    });
+    $('new-title').textContent = special ? 'New special event' : 'New market';
+    $('new-note').hidden = !special;
+    $('list-title').textContent = special ? 'Your special events' : 'Your markets';
+    $('ev-name').placeholder = special ? 'Taylor and Jordan wedding' : 'South of the James Market';
+    $('ev-welcome').placeholder = special ? 'Made in 10-15 minutes.' : 'Made in 10-15 minutes while you shop around.';
     var ul = $('events'); ul.replaceChildren();
-    state.events.forEach(function (ev) {
+    var mine = state.events.filter(function (ev) { return kindOf(ev) === state.kind; });
+    mine.forEach(function (ev) {
       var li = el('li', 'card soft');
       var left = el('div');
       left.appendChild(el('h3', null, ev.name));
-      left.appendChild(el('p', 'note', 'Created ' + new Date(ev.created_at).toLocaleDateString() + ', up to ' + ev.max_magnets + ' magnets per order'));
+      left.appendChild(el('p', 'note', 'Created ' + new Date(ev.created_at).toLocaleDateString() + ', up to ' + ev.max_magnets + ' magnets per order' + (ev.overlay_path ? ', with an overlay' : '')));
       li.appendChild(left);
       var right = el('div', 'row');
       right.appendChild(el('span', 'chip ' + ev.status, cap(ev.status)));
@@ -152,15 +175,18 @@
       });
       ul.appendChild(li);
     });
-    note('events-msg', state.events.length ? '' : 'No events yet. Create your first one on the left.');
+    note('events-msg', mine.length ? '' : special ? 'No special events yet. Create one on the left, then import its overlay.' : 'No markets yet. Create your first one on the left.');
   }
+  Array.prototype.forEach.call(document.querySelectorAll('.seg button[data-kind]'), function (b) {
+    b.addEventListener('click', function () { state.kind = b.dataset.kind; note('event-msg', ''); renderEvents(); });
+  });
   $('event-form').addEventListener('submit', async function (e) {
     e.preventDefault();
     var name = $('ev-name').value.trim(), max = parseInt($('ev-max').value, 10);
     if (!name) { note('event-msg', 'Give the event a name.', 'bad'); return; }
-    if (!(max >= 1 && max <= 50)) { note('event-msg', 'Magnets per order must be between 1 and 50.', 'bad'); return; }
+    if (!(max >= 1 && max <= 100)) { note('event-msg', 'Magnets per order must be between 1 and 100.', 'bad'); return; }
     var btn = $('event-btn'); btn.disabled = true; note('event-msg', 'Creating the event.');
-    var res = await sb.from('events').insert({ name: name, slug: slugify(name), max_magnets: max, welcome: $('ev-welcome').value.trim(), ask_contact: $('ev-contact').checked }).select().single();
+    var res = await sb.from('events').insert({ name: name, slug: slugify(name), max_magnets: max, welcome: $('ev-welcome').value.trim(), ask_contact: $('ev-contact').checked, kind: state.kind, show_prices: state.kind !== 'private' }).select().single();
     btn.disabled = false;
     if (lostSession(res.error)) return;
     if (res.error) { note('event-msg', 'The event could not be created. Try again.', 'bad'); return; }
@@ -177,6 +203,9 @@
     $('poster-event').textContent = ev.name;
     $('set-name').value = ev.name; $('set-max').value = ev.max_magnets;
     $('set-welcome').value = ev.welcome || ''; $('set-contact').checked = !!ev.ask_contact;
+    $('set-prices').checked = ev.show_prices !== false;
+    $('poster-qr-sub').textContent = kindOf(ev) === 'private' ? 'Made in 10-15 minutes.' : 'Made in 10-15 minutes while you shop around.';
+    $('st-unpaid').parentNode.hidden = !priced(); $('st-collected').parentNode.hidden = !priced();
   }
   function renderStatus() {
     var ev = state.event;
@@ -209,6 +238,8 @@
     var pq = $('poster-qr'); pq.replaceChildren();
     if (window.QRCode) new window.QRCode(pq, { text: url, width: 900, height: 900, correctLevel: window.QRCode.CorrectLevel.M });
     renderEventInfo(); renderStatus();
+    $('overlay-fold').open = kindOf(ev) === 'private';
+    loadOverlay(ev);
     purgeReset(); note('purge-msg', ''); note('settings-msg', '');
     $('orders').replaceChildren(); $('orders-empty').textContent = '';
     note('print-msg', ''); note('queue-msg', 'Loading orders.');
@@ -250,13 +281,13 @@
     var ev = state.event; if (!ev) return;
     var name = $('set-name').value.trim(), max = parseInt($('set-max').value, 10);
     if (!name) { note('settings-msg', 'The event needs a name.', 'bad'); return; }
-    if (!(max >= 1 && max <= 50)) { note('settings-msg', 'Magnets per order must be between 1 and 50.', 'bad'); return; }
+    if (!(max >= 1 && max <= 100)) { note('settings-msg', 'Magnets per order must be between 1 and 100.', 'bad'); return; }
     var btn = $('settings-btn'); btn.disabled = true;
-    var res = await sb.from('events').update({ name: name, max_magnets: max, welcome: $('set-welcome').value.trim(), ask_contact: $('set-contact').checked }).eq('id', ev.id).select().single();
+    var res = await sb.from('events').update({ name: name, max_magnets: max, welcome: $('set-welcome').value.trim(), ask_contact: $('set-contact').checked, show_prices: $('set-prices').checked }).eq('id', ev.id).select().single();
     btn.disabled = false;
     if (lostSession(res.error)) return;
     if (res.error) { note('settings-msg', 'The settings did not save. Try again.', 'bad'); return; }
-    state.event = res.data; renderEventInfo();
+    state.event = res.data; renderEventInfo(); renderOrders();
     note('settings-msg', 'Saved. The guest link and QR code stay the same.', 'good');
   });
 
@@ -366,6 +397,7 @@
     g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
     g.imageSmoothingQuality = 'high';
     C.drawCrop(g, { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy }, 0, 0, canvas.width);
+    C.drawOverlay(g, state.overlay, 0, 0, canvas.width);
   }
   function waitingRows() {
     var rows = [];
@@ -421,9 +453,10 @@
       head.appendChild(who);
       var meta = el('div', 'row');
       var count = o.order_photos.reduce(function (n, p) { return n + p.qty; }, 0);
+      var money = priced();
       var cost = o.paid_at && o.paid_amount != null ? Number(o.paid_amount) : C.priceFor(count);
-      if (cost != null) meta.appendChild(el('strong', 'price', C.money(cost)));
-      meta.appendChild(el('span', 'chip ' + (o.paid_at ? 'paid' : 'unpaid'), o.paid_at ? 'Paid' : 'Not paid'));
+      if (money && cost != null) meta.appendChild(el('strong', 'price', C.money(cost)));
+      if (money) meta.appendChild(el('span', 'chip ' + (o.paid_at ? 'paid' : 'unpaid'), o.paid_at ? 'Paid' : 'Not paid'));
       meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(o.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
       var label = o.status === 'new' ? 'Waiting to print' : o.status === 'printed' ? 'Printed' : 'Picked up';
       meta.appendChild(el('span', 'chip ' + o.status, label));
@@ -447,7 +480,7 @@
       li.appendChild(el('p', 'note', 'Tap a photo to fix how it is framed.'));
 
       var actions = el('div', 'row');
-      if (!o.paid_at) {
+      if (money && !o.paid_at) {
         var pay = el('button', 'btn small primary', 'Mark paid' + (cost != null ? ' ' + C.money(cost) : '')); pay.type = 'button';
         pay.addEventListener('click', function () { setOrder(o, { paid_at: new Date().toISOString(), paid_amount: cost }); });
         actions.appendChild(pay);
@@ -476,7 +509,7 @@
         });
         actions.appendChild(again);
       }
-      if (o.paid_at) {
+      if (money && o.paid_at) {
         var unpay = el('button', 'btn small', 'Undo paid'); unpay.type = 'button';
         unpay.addEventListener('click', function () { setOrder(o, { paid_at: null, paid_amount: null }); });
         actions.appendChild(unpay);
@@ -493,7 +526,7 @@
   }
 
   /* ---------- fix how a guest framed a photo ---------- */
-  var fixEditor = C.attachEditor($('fix-canvas'), function () { return state.fixing ? state.fixing.item : null; }, function () { fixButtons(); });
+  var fixEditor = C.attachEditor($('fix-canvas'), function () { return state.fixing ? state.fixing.item : null; }, function () { fixButtons(); }, function () { return state.overlay; });
   function fixButtons() {
     var it = state.fixing && state.fixing.item; if (!it) return;
     $('fix-out').disabled = it.zoom <= 1.001; $('fix-in').disabled = it.zoom >= 2.999;
@@ -540,6 +573,161 @@
     if (r.error) { note('fix-msg', 'That did not save. Check the connection and try again.', 'bad'); return; }
     closeFix(); discardPending();
     await loadOrders();
+  });
+
+  /* ---------- overlay: a picture printed on top of every magnet ---------- */
+  var ov = null, ovSample = null;   /* ov is the copy being edited; state.overlay is the saved one */
+  function decodeBlob(blob) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(blob), img = new Image();
+      img.onload = function () { resolve({ img: img, iw: img.naturalWidth, ih: img.naturalHeight }); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('DECODE')); };
+      img.src = url;
+    });
+  }
+  function samplePhoto() {
+    var c = document.createElement('canvas'); c.width = c.height = 600;
+    var g = c.getContext('2d'), sky = g.createLinearGradient(0, 0, 0, 600);
+    sky.addColorStop(0, '#BFE3E4'); sky.addColorStop(1, '#FBD3DC');
+    g.fillStyle = sky; g.fillRect(0, 0, 600, 600);
+    g.fillStyle = '#F6BC2F'; g.beginPath(); g.arc(440, 170, 70, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#5CA3A7'; g.beginPath(); g.moveTo(0, 600); g.lineTo(0, 430);
+    g.quadraticCurveTo(170, 330, 330, 440); g.quadraticCurveTo(470, 520, 600, 400); g.lineTo(600, 600); g.fill();
+    return { img: c, iw: 600, ih: 600, zoom: 1, cx: 0.5, cy: 0.5 };
+  }
+  function drawOv() {
+    var cv = $('ov-canvas'), g = cv.getContext('2d'), n = cv.width;
+    if (!ovSample) ovSample = samplePhoto();
+    g.clearRect(0, 0, n, n);
+    C.drawCrop(g, ovSample, 0, 0, n);
+    C.drawOverlay(g, ov, 0, 0, n);
+    C.drawGuides(g, n);
+  }
+  function renderOverlay() {
+    var has = !!ov;
+    $('ov-canvas').hidden = !has; $('ov-tools').hidden = !has;
+    $('ov-save').hidden = !(has && ov.dirty);
+    $('ov-undo').hidden = !(has && ov.dirty);
+    $('ov-remove').hidden = !(state.event && state.event.overlay_path);
+    $('ov-file-label').textContent = has ? 'Use a different overlay' : 'Import an overlay';
+    $('ov-file-label').className = 'btn small' + (has ? '' : ' primary');
+    if (has) { $('ov-size').value = ov.scale; drawOv(); }
+  }
+  function editCopy() {
+    var s = state.overlay;
+    ov = s ? { img: s.img, iw: s.iw, ih: s.ih, scale: s.scale, cx: s.cx, cy: s.cy, blob: null, dirty: false } : null;
+  }
+  /* The thumbnails, the fix window and the sheets all draw the saved overlay. */
+  function overlayChanged() {
+    discardPending();
+    if (state.known) renderOrders();
+  }
+  async function loadOverlay(ev) {
+    state.overlay = null; ov = null; note('ov-msg', ''); renderOverlay();
+    if (!ev.overlay_path) return;
+    try {
+      var r = await sb.storage.from('overlays').download(ev.overlay_path);
+      if (r.error) throw r.error;
+      var pic = await decodeBlob(r.data);
+      if (!state.event || state.event.id !== ev.id) return;
+      state.overlay = {
+        img: pic.img, iw: pic.iw, ih: pic.ih, scale: Number(ev.overlay_scale) || 1,
+        cx: ev.overlay_x == null ? 0.5 : Number(ev.overlay_x), cy: ev.overlay_y == null ? 0.5 : Number(ev.overlay_y)
+      };
+      editCopy(); renderOverlay(); overlayChanged();
+    } catch (err) {
+      if (!lostSession(err)) note('ov-msg', 'The overlay could not load. Check the connection, then go back and open the event again.', 'bad');
+    }
+  }
+  function ovTouched() { ov.dirty = true; note('ov-msg', 'Not saved yet. Press Save overlay when it looks right.'); renderOverlay(); }
+  $('ov-file').addEventListener('change', async function () {
+    var f = this.files && this.files[0]; this.value = '';
+    if (!f || !state.event) return;
+    if (!/^image\/(png|webp|jpeg)$/.test(f.type)) { note('ov-msg', 'That file type does not work as an overlay. Use a PNG picture. In Canva, download as PNG with Transparent background ticked.', 'bad'); return; }
+    try {
+      var pic = await decodeBlob(f), k = Math.min(1, 1600 / Math.max(pic.iw, pic.ih));
+      var c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(pic.iw * k)); c.height = Math.max(1, Math.round(pic.ih * k));
+      c.getContext('2d').drawImage(pic.img, 0, 0, c.width, c.height);
+      /* does any of it let the photo show through? */
+      var t = document.createElement('canvas'); t.width = t.height = 48;
+      var tg = t.getContext('2d'); tg.drawImage(c, 0, 0, 48, 48);
+      var px = tg.getImageData(0, 0, 48, 48).data, clear = false;
+      for (var i = 3; i < px.length; i += 4) if (px[i] < 245) { clear = true; break; }
+      var blob = await new Promise(function (resolve) { c.toBlob(resolve, 'image/png'); });
+      if (!blob) throw new Error('ENCODE');
+      ov = { img: c, iw: c.width, ih: c.height, scale: 1, cx: 0.5, cy: 0.5, blob: blob, dirty: true };
+      renderOverlay();
+      note('ov-msg', clear ? 'Drag it into place and set the size, then press Save overlay.'
+        : 'This picture has no see-through areas, so it covers the photo wherever it sits. Shrink it into a corner, or import a PNG with a transparent background. Not saved yet.', clear ? '' : 'bad');
+    } catch (err) { note('ov-msg', 'That picture could not be opened. Try a PNG file.', 'bad'); }
+  });
+  $('ov-test').addEventListener('change', async function () {
+    var f = this.files && this.files[0]; this.value = '';
+    if (!f) return;
+    try {
+      var pic = await C.loadPhoto(f);
+      ovSample = { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: 1, cx: 0.5, cy: 0.5 };
+      C.normalize(ovSample); if (ov) drawOv();
+    } catch (err) { note('ov-msg', 'That photo could not be opened. Try another one.', 'bad'); }
+  });
+  $('ov-size').addEventListener('input', function () { if (!ov) return; ov.scale = C.clamp(parseFloat(this.value) || 1, 0.1, 2); ovTouched(); });
+  $('ov-fit').addEventListener('click', function () { if (!ov) return; ov.scale = 1; ov.cx = 0.5; ov.cy = 0.5; ovTouched(); });
+  $('ov-centre').addEventListener('click', function () { if (!ov) return; ov.cx = 0.5; ov.cy = 0.5; ovTouched(); });
+  $('ov-undo').addEventListener('click', function () { editCopy(); note('ov-msg', ''); renderOverlay(); });
+  (function () {
+    var cv = $('ov-canvas'), last = null;
+    function face() { return cv.getBoundingClientRect().width * CFG.crop.face / CFG.crop.photo; }
+    function nudge(dx, dy) { ov.cx = C.clamp(ov.cx + dx, -0.5, 1.5); ov.cy = C.clamp(ov.cy + dy, -0.5, 1.5); ovTouched(); }
+    cv.addEventListener('pointerdown', function (e) { try { cv.setPointerCapture(e.pointerId); } catch (err) {} last = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
+    cv.addEventListener('pointermove', function (e) {
+      if (!last || last.id !== e.pointerId || !ov) return;
+      var F = face(); if (!F) return;
+      nudge((e.clientX - last.x) / F, (e.clientY - last.y) / F);
+      last.x = e.clientX; last.y = e.clientY;
+    });
+    function end(e) { if (last && last.id === e.pointerId) last = null; }
+    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+    cv.addEventListener('keydown', function (e) {
+      var d = { ArrowLeft: [-0.01, 0], ArrowRight: [0.01, 0], ArrowUp: [0, -0.01], ArrowDown: [0, 0.01] }[e.key];
+      if (!d || !ov) return;
+      e.preventDefault(); nudge(d[0], d[1]);
+    });
+  })();
+  $('ov-save').addEventListener('click', async function () {
+    var ev = state.event; if (!ev || !ov || state.busy) return;
+    var btn = this, old = ev.overlay_path, path = old;
+    state.busy = true; btn.disabled = true; note('ov-msg', 'Saving the overlay.');
+    try {
+      if (ov.blob) {
+        path = ev.id + '/' + Date.now() + '.png';
+        var up = await sb.storage.from('overlays').upload(path, ov.blob, { contentType: 'image/png', cacheControl: '3600', upsert: false });
+        if (up.error) throw up.error;
+      }
+      var res = await sb.from('events').update({ overlay_path: path, overlay_scale: Math.round(ov.scale * 1000) / 1000, overlay_x: Math.round(ov.cx * 10000) / 10000, overlay_y: Math.round(ov.cy * 10000) / 10000 }).eq('id', ev.id).select().single();
+      if (res.error) throw res.error;
+      if (old && old !== path) await sb.storage.from('overlays').remove([old]);
+      state.event = res.data;
+      state.overlay = { img: ov.img, iw: ov.iw, ih: ov.ih, scale: ov.scale, cx: ov.cx, cy: ov.cy };
+      editCopy(); renderOverlay(); overlayChanged();
+      note('ov-msg', 'Saved. Every magnet for this event now has this overlay, for guests and on the print sheets.', 'good');
+    } catch (err) {
+      if (!lostSession(err)) note('ov-msg', 'The overlay did not save. Check the connection and try again.', 'bad');
+    }
+    state.busy = false; btn.disabled = false;
+  });
+  $('ov-remove').addEventListener('click', async function () {
+    var ev = state.event; if (!ev || !ev.overlay_path || state.busy) return;
+    var btn = this, old = ev.overlay_path;
+    state.busy = true; btn.disabled = true;
+    var res = await sb.from('events').update({ overlay_path: null, overlay_scale: 1, overlay_x: 0.5, overlay_y: 0.5 }).eq('id', ev.id).select().single();
+    state.busy = false; btn.disabled = false;
+    if (lostSession(res.error)) return;
+    if (res.error) { note('ov-msg', 'The overlay was not removed. Try again.', 'bad'); return; }
+    await sb.storage.from('overlays').remove([old]);
+    state.event = res.data; state.overlay = null; ov = null;
+    renderOverlay(); overlayChanged();
+    note('ov-msg', 'Overlay removed. Magnets for this event print as plain photos.', 'good');
   });
 
   /* ---------- after the event ---------- */
@@ -592,6 +780,11 @@
     return out.length ? out : rows.slice(0, 1);
   }
   async function buildPdf(rows) {
+    /* Never print an overlay event without its overlay. */
+    if (state.event.overlay_path && !state.overlay) {
+      await loadOverlay(state.event);
+      if (!state.overlay) throw new Error('OVERLAY');
+    }
     var slots = [], images = {};
     rows.forEach(function (r) { for (var i = 0; i < r.photo.qty; i++) slots.push(r); });
     for (var k = 0; k < rows.length; k++) {
@@ -635,7 +828,7 @@
       note('print-msg', '');
       $('ready').scrollIntoView({ block: 'center', behavior: 'smooth' });
     } catch (err) {
-      if (!lostSession(err)) note('print-msg', 'The PDF could not be built. Check the connection and try again.', 'bad');
+      if (!lostSession(err)) note('print-msg', String(err && err.message) === 'OVERLAY' ? 'The overlay for this event could not load, so no sheet was made. Check the connection and try again.' : 'The PDF could not be built. Check the connection and try again.', 'bad');
     }
     state.busy = false;
   }

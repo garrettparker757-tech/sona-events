@@ -7,7 +7,9 @@
   var slug = (parts[0] === 'e' && parts[1]) ? decodeURIComponent(parts[1]) : (new URLSearchParams(location.search).get('e') || '');
   slug = slug.toLowerCase();
 
-  var state = { event: null, items: [], editing: null, nextId: 1, orderId: null, sending: false, busy: false };
+  var state = { event: null, items: [], editing: null, nextId: 1, orderId: null, sending: false, busy: false, overlay: null };
+  /* Private events can hide prices: the host pays, not the guest. */
+  function priceOf(n) { return state.event && state.event.show_prices === false ? null : C.priceFor(n); }
   var sb = null;
   var VIEWS = ['view-loading', 'view-closed', 'view-photos', 'view-name', 'view-check', 'view-done'];
 
@@ -51,6 +53,7 @@
       thumb.setAttribute('role', 'img');
       thumb.setAttribute('aria-label', 'Photo ' + (idx + 1));
       C.drawCrop(thumb.getContext('2d'), it, 0, 0, 240);
+      C.drawOverlay(thumb.getContext('2d'), state.overlay, 0, 0, 240);
       thumb.addEventListener('click', function () { openEditor(it); });
       li.appendChild(thumb);
 
@@ -59,7 +62,16 @@
       copies.appendChild(el('span', null, 'How many?'));
       var qty = el('span', 'qty');
       var minus = el('button', null, '−'); minus.type = 'button'; minus.setAttribute('aria-label', 'One fewer of photo ' + (idx + 1));
-      var out = el('output', null, String(it.qty));
+      var out;
+      if (max > 12) {
+        out = document.createElement('input'); out.type = 'number'; out.inputMode = 'numeric'; out.min = 1; out.max = it.qty + left; out.value = it.qty;
+        out.className = 'qtynum'; out.setAttribute('aria-label', 'How many of photo ' + (idx + 1));
+        out.addEventListener('change', function () {
+          var others = total() - it.qty, v = Math.round(Number(out.value) || 1);
+          it.qty = Math.min(Math.max(1, v), Math.max(1, state.event.max_magnets - others));
+          renderPhotos();
+        });
+      } else { out = el('output', null, String(it.qty)); }
       var plus = el('button', null, '+'); plus.type = 'button'; plus.setAttribute('aria-label', 'One more of photo ' + (idx + 1));
       minus.disabled = it.qty <= 1; plus.disabled = left <= 0;
       minus.addEventListener('click', function () { if (it.qty > 1) { it.qty--; renderPhotos(); } });
@@ -84,11 +96,12 @@
     $('photo-help').textContent = state.items.length
       ? 'Each photo becomes one square magnet. Happy with them? Tap Next.'
       : 'Each photo becomes one square magnet. You can choose up to ' + max + '. Tap the yellow button to pick photos from your phone.';
-    var cost = C.priceFor(n);
+    var cost = priceOf(n);
     $('counter').textContent = plural(n, 'magnet');
     $('tally-price').textContent = cost != null ? C.money(cost) : '';
-    $('price-list').textContent = C.packs(max).map(function (t) { return t.qty + ' for ' + C.money(t.price); }).join('  \u00b7  ');
-    var hint = packHint(n, max), more = hint ? null : C.oneMore(n, max);
+    $('price-list').textContent = state.event.show_prices === false ? '' : C.packs(max).map(function (t) { return t.qty + ' for ' + C.money(t.price); }).join('  \u00b7  ');
+    var priced = state.event.show_prices !== false;
+    var hint = priced ? packHint(n, max) : '', more = hint || !priced ? null : C.oneMore(n, max);
     if (more) hint = 'Add 1 more magnet for only ' + C.money(more.extra) + ' more. ' + more.qty + ' magnets are ' + C.money(more.price) + '.';
     $('deal').hidden = !hint;
     $('deal').textContent = hint; $('deal').className = 'deal';
@@ -105,7 +118,7 @@
     return sizes.length < 2 ? sizes.join('') : sizes.slice(0, -1).join(', ') + ' or ' + sizes[sizes.length - 1];
   }
   function packHint(n, max) {
-    if (!n || C.priceFor(n) != null) return '';
+    if (!n || priceOf(n) != null) return '';
     var near = C.nearestPacks(n, max), ways = [];
     if (near.up) ways.push('add ' + (near.up - n) + ' more for a pack of ' + near.up + ' (' + C.money(C.priceFor(near.up)) + ')');
     if (near.down) ways.push('remove ' + (n - near.down) + ' for a pack of ' + near.down + ' (' + C.money(C.priceFor(near.down)) + ')');
@@ -137,7 +150,7 @@
   }
 
   /* ---------- adjust one photo ---------- */
-  var editor = C.attachEditor($('editor-canvas'), function () { return state.editing; }, function () { syncZoom(); });
+  var editor = C.attachEditor($('editor-canvas'), function () { return state.editing; }, function () { syncZoom(); }, function () { return state.overlay; });
   function syncZoom() {
     var it = state.editing; if (!it) return;
     $('zoom-out').disabled = it.zoom <= 1.001;
@@ -174,14 +187,14 @@
   /* ---------- step 2: name ---------- */
   function goName() {
     if (!state.items.length) return;
-    var hint = packHint(total(), state.event.max_magnets);
+    var hint = state.event.show_prices === false ? '' : packHint(total(), state.event.max_magnets);
     if (hint) {
       $('deal').hidden = false; $('deal').textContent = hint; $('deal').className = 'deal stop';
       try { $('deal').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (err) {}
       return;
     }
     note('form-msg', '');
-    var n = total(), cost = C.priceFor(n);
+    var n = total(), cost = priceOf(n);
     $('name-count').textContent = 'Your order: ' + plural(n, 'magnet');
     $('name-total').textContent = cost != null ? C.money(cost) : '';
     show('view-name', 'guest-name');
@@ -192,8 +205,8 @@
     if (e) e.preventDefault();
     var name = $('guest-name').value.trim();
     if (!name) { note('form-msg', 'Please type your name so we know who to call.', 'bad'); $('guest-name').focus(); return; }
-    if (!state.items.length || packHint(total(), state.event.max_magnets)) { show('view-photos', 'photos-title'); renderPhotos(); return; }
-    var ul = $('proofs'), n = total(), cost = C.priceFor(n), ratio = CFG.crop.photo / CFG.crop.face;
+    if (!state.items.length || (state.event.show_prices !== false && packHint(total(), state.event.max_magnets))) { show('view-photos', 'photos-title'); renderPhotos(); return; }
+    var ul = $('proofs'), n = total(), cost = priceOf(n), ratio = CFG.crop.photo / CFG.crop.face;
     ul.replaceChildren();
     state.items.forEach(function (it, idx) {
       var li = el('li', 'proof');
@@ -206,6 +219,7 @@
       g.imageSmoothingQuality = 'high';
       /* show only the front of the magnet: the part inside the dashed square */
       C.drawCrop(g, it, (px - full) / 2, (px - full) / 2, full);
+      C.drawOverlay(g, state.overlay, (px - full) / 2, (px - full) / 2, full);
       li.appendChild(cv);
       li.appendChild(el('p', null, it.qty === 1 ? '1 magnet' : it.qty + ' magnets of this photo'));
       var fix = el('button', 'btn small', 'Adjust'); fix.type = 'button';
@@ -293,10 +307,10 @@
       var count = total();
       $('done-hello').textContent = 'You are all set, ' + name + '!';
       $('done-no').textContent = res.data;
-      var cost = C.priceFor(count);
+      var cost = priceOf(count);
       $('done-total').textContent = cost != null ? C.money(cost) : '';
       $('done-totalbox').hidden = cost == null;
-      $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. They will be ready in 10-15 minutes, so feel free to shop around. Then come back to the table and tell us your name or order number.';
+      $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. They will be ready in 10-15 minutes' + (state.event.kind === 'private' ? '.' : ', so feel free to shop around.') + ' Then come back to the table and tell us your name or order number.';
       try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, at: Date.now() })); } catch (err) {}
       state.items = []; state.orderId = null;
       $('last-order').hidden = true;
@@ -339,9 +353,13 @@
     state.event = ev;
     document.title = ev.name + ' | Sona Magnets';
     $('event-name').textContent = ev.name;
-    $('welcome').textContent = ev.welcome || 'Your photos, made into magnets in 10-15 minutes while you shop around.';
+    $('welcome').textContent = ev.welcome || (ev.kind === 'private' ? 'Your photos, made into magnets in 10-15 minutes.' : 'Your photos, made into magnets in 10-15 minutes while you shop around.');
     if (ev.status !== 'live') { closed('Orders are closed', 'This event is not taking photo orders right now. Please ask us at the Sona Magnets table.'); return; }
     $('contact-wrap').hidden = !ev.ask_contact;
+    if (ev.overlay_path) {
+      var pic = await C.loadOverlayImage(C.overlayUrl(ev.overlay_path));
+      if (pic) state.overlay = { img: pic.img, iw: pic.iw, ih: pic.ih, scale: Number(ev.overlay_scale) || 1, cx: ev.overlay_x == null ? 0.5 : Number(ev.overlay_x), cy: ev.overlay_y == null ? 0.5 : Number(ev.overlay_y) };
+    }
     renderPhotos();
     showLastOrder();
     show('view-photos');

@@ -88,22 +88,60 @@
     return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
   }
 
+  /* ---------- overlays (private events) ----------
+     An overlay is a picture laid over every magnet. Its place is measured on the FRONT of the magnet:
+     cx / cy 0.5 is the centre, and scale 1 makes it as wide as the front (or as tall, for a tall picture). */
+  function overlayRect(ov, x, y, size) {
+    var f = window.SONA.crop.face / window.SONA.crop.photo, F = size * f, fx = x + (size - F) / 2, fy = y + (size - F) / 2;
+    var ar = ov.iw / ov.ih, w = F * ov.scale * (ar >= 1 ? 1 : ar), h = w / ar;
+    return { x: fx + ov.cx * F - w / 2, y: fy + ov.cy * F - h / 2, w: w, h: h, F: F };
+  }
+  /* (x, y, size) is where the printed photo square sits on the canvas. */
+  function drawOverlay(g, ov, x, y, size) {
+    if (!ov || !ov.img) return;
+    var r = overlayRect(ov, x, y, size);
+    g.save(); g.beginPath(); g.rect(x, y, size, size); g.clip();
+    g.drawImage(ov.img, r.x, r.y, r.w, r.h);
+    g.restore();
+  }
+  /* Guests only look at the overlay, so if the careful way of loading fails, the plain way is fine. */
+  function loadOverlayImage(url) {
+    function attempt(cors) {
+      return new Promise(function (resolve) {
+        var img = new Image();
+        if (cors) img.crossOrigin = 'anonymous';
+        img.onload = function () { resolve(img.naturalWidth ? { img: img, iw: img.naturalWidth, ih: img.naturalHeight } : null); };
+        img.onerror = function () { resolve(null); };
+        img.src = url;
+      });
+    }
+    return attempt(true).then(function (pic) { return pic || attempt(false); });
+  }
+  function overlayUrl(path) {
+    return window.SONA.supabaseUrl + '/storage/v1/object/public/overlays/' + String(path).split('/').map(encodeURIComponent).join('/');
+  }
+
+  /* Fades the part that wraps round the edge and outlines the front of the magnet. */
+  function drawGuides(g, n) {
+    var inset = (1 - window.SONA.crop.face / window.SONA.crop.photo) / 2 * n;
+    g.fillStyle = 'rgba(251, 245, 233, 0.55)';
+    g.fillRect(0, 0, n, inset); g.fillRect(0, n - inset, n, inset);
+    g.fillRect(0, inset, inset, n - 2 * inset); g.fillRect(n - inset, inset, inset, n - 2 * inset);
+    g.setLineDash([12, 8]); g.lineWidth = 3; g.strokeStyle = '#17807E';
+    g.strokeRect(inset, inset, n - 2 * inset, n - 2 * inset);
+    g.setLineDash([]);
+  }
+
   /* Wires a canvas so one finger drags, two fingers pinch, arrow keys nudge. */
-  function attachEditor(canvas, getItem, onChange) {
+  function attachEditor(canvas, getItem, onChange, getOverlay) {
     var pts = new Map(), lastDist = 0;
-    var faceRatio = window.SONA.crop.face / window.SONA.crop.photo;
     function draw() {
       var it = getItem(); if (!it) return;
       var g = canvas.getContext('2d'), n = canvas.width;
       g.clearRect(0, 0, n, n);
       drawCrop(g, it, 0, 0, n);
-      var inset = (1 - faceRatio) / 2 * n;
-      g.fillStyle = 'rgba(251, 245, 233, 0.55)';
-      g.fillRect(0, 0, n, inset); g.fillRect(0, n - inset, n, inset);
-      g.fillRect(0, inset, inset, n - 2 * inset); g.fillRect(n - inset, inset, inset, n - 2 * inset);
-      g.setLineDash([12, 8]); g.lineWidth = 3; g.strokeStyle = '#17807E';
-      g.strokeRect(inset, inset, n - 2 * inset, n - 2 * inset);
-      g.setLineDash([]);
+      if (getOverlay) drawOverlay(g, getOverlay(), 0, 0, n);
+      drawGuides(g, n);
     }
     function moveBy(it, dx, dy) {
       var r = cropRect(it);
@@ -173,5 +211,5 @@
     return isPack && next - now <= 5 ? { qty: n + 1, extra: next - now, price: next } : null;
   }
 
-  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
+  window.SonaCommon = { drawGuides: drawGuides, overlayRect: overlayRect, drawOverlay: drawOverlay, loadOverlayImage: loadOverlayImage, overlayUrl: overlayUrl, clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
 })();

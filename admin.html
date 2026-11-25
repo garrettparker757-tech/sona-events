@@ -40,11 +40,16 @@
   </section>
 
   <div class="grid2" id="view-events" hidden>
+    <div class="seg tabs" role="group" aria-label="Kind of event">
+      <button type="button" data-kind="market" aria-pressed="true">Markets</button>
+      <button type="button" data-kind="private" aria-pressed="false">Special events</button>
+    </div>
     <section class="card">
-      <h2>New event</h2>
+      <h2 id="new-title">New market</h2>
+      <p class="note" id="new-note" hidden>For private events and bulk orders. After you create it, import your overlay and it goes on every magnet. Prices stay hidden from guests unless you turn them on.</p>
       <form class="stack" id="event-form" novalidate>
         <label for="ev-name">Event name<input id="ev-name" type="text" maxlength="80" placeholder="South of the James Market"></label>
-        <label for="ev-max">Magnets allowed per order<input id="ev-max" type="number" min="1" max="50" value="9"></label>
+        <label for="ev-max">Magnets allowed per order<input id="ev-max" type="number" min="1" max="100" value="9"></label>
         <label for="ev-welcome">Welcome line (optional)<input id="ev-welcome" type="text" maxlength="300" placeholder="Made in 10-15 minutes while you shop around."></label>
         <label class="check" for="ev-contact"><input id="ev-contact" type="checkbox">Ask guests for a phone or email</label>
         <button class="btn primary" type="submit" id="event-btn">Create event</button>
@@ -53,7 +58,7 @@
     </section>
     <div class="stack">
       <section class="card">
-        <h2>Your events</h2>
+        <h2 id="list-title">Your markets</h2>
         <ul class="events" id="events"></ul>
         <p class="note" id="events-msg" role="status"></p>
       </section>
@@ -100,12 +105,41 @@
         <summary>Event settings</summary>
         <form class="stack" id="settings-form" novalidate>
           <label for="set-name">Event name<input id="set-name" type="text" maxlength="80"></label>
-          <label for="set-max">Magnets allowed per order<input id="set-max" type="number" min="1" max="50"></label>
+          <label for="set-max">Magnets allowed per order<input id="set-max" type="number" min="1" max="100"></label>
           <label for="set-welcome">Welcome line (optional)<input id="set-welcome" type="text" maxlength="300"></label>
           <label class="check" for="set-contact"><input id="set-contact" type="checkbox">Ask guests for a phone or email</label>
+          <label class="check" for="set-prices"><input id="set-prices" type="checkbox">Show prices to guests and track who has paid</label>
           <button class="btn small" type="submit" id="settings-btn">Save settings</button>
           <p class="note" id="settings-msg" role="status"></p>
         </form>
+      </details>
+
+      <details class="fold" id="overlay-fold">
+        <summary>Magnet overlay</summary>
+        <div class="stack">
+          <p class="note">An overlay is a picture (a logo, names, a date, a frame) that prints on top of every magnet for this event. A PNG with a see-through background works best.</p>
+          <canvas class="ovcanvas" id="ov-canvas" width="720" height="720" tabindex="0" aria-label="A sample magnet with the overlay on it. Drag the overlay to move it." hidden></canvas>
+          <div class="stack" id="ov-tools" hidden>
+            <label class="zoomslide" for="ov-size">Slide to change the overlay size
+              <input type="range" id="ov-size" min="0.1" max="2" step="0.01" value="1">
+            </label>
+            <div class="row">
+              <button class="btn small" type="button" id="ov-fit">Fill the front</button>
+              <button class="btn small" type="button" id="ov-centre">Centre it</button>
+              <label class="btn small" for="ov-test">Try it on a real photo</label>
+              <input class="visually-hidden" type="file" id="ov-test" accept="image/*">
+            </div>
+            <p class="legend"><i></i>Drag the overlay to move it. Everything inside the dashed square shows on the front of the magnet.</p>
+          </div>
+          <div class="row">
+            <button class="btn small primary" type="button" id="ov-save" hidden>Save overlay</button>
+            <label class="btn small" for="ov-file" id="ov-file-label">Import an overlay</label>
+            <input class="visually-hidden" type="file" id="ov-file" accept="image/png,image/webp,image/jpeg">
+            <button class="btn small" type="button" id="ov-undo" hidden>Undo changes</button>
+            <button class="btn small" type="button" id="ov-remove" hidden>Remove overlay</button>
+          </div>
+          <p class="note" id="ov-msg" role="status"></p>
+        </div>
       </details>
 
       <details class="fold">
@@ -226,7 +260,7 @@
   <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
   <img class="poster-logo" src="/logo.png" alt="">
   <p class="poster-title">Scan me for photo magnets!</p>
-  <p class="poster-sub">Made in 10-15 minutes while you shop around.</p>
+  <p class="poster-sub" id="poster-qr-sub">Made in 10-15 minutes while you shop around.</p>
   <div class="poster-qr" id="poster-qr"></div>
   <ol class="poster-steps">
     <li><b>1</b><span>Scan the code</span></li>

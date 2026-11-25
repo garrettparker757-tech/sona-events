@@ -16,3 +16,6 @@
 --  * order_photos keeps how each photo is framed (crop_zoom, crop_x, crop_y). Guests send the whole
 --    photo, and staff can re-frame it from the staff page without the guest re-sending anything.
 --  * orders.paid_at / paid_amount record payment taken at the table (set from the staff page).
+--  * Special events: events.kind ('market' or 'private'), events.show_prices, and an overlay picture
+--    (events.overlay_path in the public "overlays" bucket, plus overlay_scale / overlay_x / overlay_y,
+--    measured on the front of the magnet). Up to 100 magnets per order (events.max_magnets, order_photos.qty).
