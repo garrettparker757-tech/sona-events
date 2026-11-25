@@ -204,8 +204,13 @@ textarea { resize: vertical; font-size: 1.1rem; }
 .pricelist:empty { display: none; }
 .deal.stop { background: var(--sun); }
 .deal { background: var(--sun-soft); border: 2px solid var(--ink); border-radius: 14px; padding: 10px 14px; font-weight: 800; }
-.total { font-family: var(--display); font-weight: 600; font-size: 1.3rem; }
-.total:empty { display: none; }
+.tally { display: flex; flex-direction: column; line-height: 1.1; }
+.tally strong { font-family: var(--display); font-weight: 700; font-size: 2rem; font-variant-numeric: tabular-nums; }
+.tally strong:empty { display: none; }
+.tally span { font-weight: 800; color: var(--ink-soft); }
+.totalbox { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; background: var(--sun-soft); border: 2.5px solid var(--ink); border-radius: 18px; padding: 12px 16px; font-weight: 800; width: 100%; }
+.totalbox strong { font-family: var(--display); font-weight: 700; font-size: 2.4rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.totalbox strong:empty { display: none; }
 
 /* ---------- printed table signs: each is exactly one Letter page ---------- */
 @page { size: letter portrait; margin: 0.5in 0.4in; }

@@ -42,7 +42,10 @@
     </div>
     <p class="deal" id="deal" role="status" hidden></p>
     <div class="actionbar" id="photos-bar" hidden>
-      <p class="count" id="counter"></p>
+      <div class="tally">
+        <strong id="tally-price"></strong>
+        <span id="counter"></span>
+      </div>
       <button class="btn primary big" type="button" id="to-name">Next</button>
     </div>
   </section>
@@ -62,6 +65,10 @@
       <label for="guest-note" id="note-wrap" hidden>Your note
         <textarea id="guest-note" maxlength="300" rows="3" placeholder="For example: please make the dog photo extra bright"></textarea>
       </label>
+      <div class="totalbox">
+        <span id="name-count"></span>
+        <strong id="name-total"></strong>
+      </div>
       <button class="btn primary wide big" type="submit" id="to-check">Next</button>
       <button class="btn wide" type="button" id="back-photos">Back to my photos</button>
       <p class="note" id="form-msg" role="alert"></p>
@@ -75,7 +82,11 @@
       <h2 id="check-title" tabindex="-1">One last look</h2>
       <p>This is exactly how your magnets will look. Once they are made, we cannot change them.</p>
       <ul class="proofs" id="proofs"></ul>
-      <p class="summary" id="summary"></p>
+      <div class="totalbox">
+        <span id="summary"></span>
+        <strong id="check-total"></strong>
+        <span id="check-pay">You pay at the table.</span>
+      </div>
       <button class="btn primary wide big" type="button" id="submit">Yes, make my magnets</button>
       <button class="btn wide" type="button" id="check-back">Change a photo</button>
       <p class="note" id="check-msg" role="alert"></p>
@@ -86,7 +97,11 @@
     <p class="eyebrow" id="done-hello">You are all set!</p>
     <p class="sub">Your order number is</p>
     <p class="order-no" id="done-no"></p>
-    <p class="total" id="done-total"></p>
+    <div class="totalbox" id="done-totalbox">
+      <span>Your total</span>
+      <strong id="done-total"></strong>
+      <span>Please pay at the table.</span>
+    </div>
     <p id="done-text"></p>
     <button class="btn" type="button" id="again">Order more magnets</button>
   </section>
