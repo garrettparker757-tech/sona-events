@@ -165,7 +165,9 @@ body.guest .qty output { min-width: 34px; font-size: 1.25rem; }
 .order .no { font-family: var(--display); font-weight: 700; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
 .thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
 .thumb { position: relative; width: 66px; height: 66px; border-radius: 10px; overflow: hidden; background: var(--teal-soft); border: 2px solid var(--ink); }
-.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb img, .thumb canvas { width: 100%; height: 100%; object-fit: cover; display: block; }
+button.thumb { padding: 0; cursor: pointer; }
+button.thumb:hover { box-shadow: 0 0 0 3px var(--pink); }
 .thumb span { position: absolute; right: 2px; bottom: 2px; background: var(--ink); color: #fff; font-size: 0.72rem; font-weight: 800; border-radius: 999px; padding: 0 6px; }
 .thumb.printed { opacity: 0.55; }
 .ready { background: var(--sun-soft); }

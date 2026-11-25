@@ -1,12 +1,12 @@
 /* Staff page: sign in, manage events, show the QR code, watch the queue, make print sheets. */
 (function () {
   'use strict';
-  var CFG = window.SONA, Sheet = window.SonaSheet, T = Sheet.template(CFG.template);
+  var CFG = window.SONA, Sheet = window.SonaSheet, C = window.SonaCommon, T = Sheet.template(CFG.template);
   var $ = function (id) { return document.getElementById(id); };
   var VIEWS = ['view-loading', 'view-login', 'view-denied', 'view-events', 'view-event'];
   var state = {
     events: [], event: null, orders: [], sig: '', timer: null, blobs: new Map(), pending: null, busy: false,
-    known: null, fresh: {}, unseen: 0, filter: 'todo', query: '', sound: false, audio: null
+    known: null, fresh: {}, unseen: 0, filter: 'todo', query: '', sound: false, audio: null, pics: new Map(), fixing: null
   };
   var sb = null;
   var TITLE = 'Sona Events staff';
@@ -302,7 +302,7 @@
   async function loadOrders() {
     var ev = state.event; if (!ev) return;
     var res = await sb.from('orders')
-      .select('id, order_no, guest_name, contact, note, status, created_at, order_photos(id, path, qty, printed_at, created_at)')
+      .select('id, order_no, guest_name, contact, note, status, created_at, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y)')
       .eq('event_id', ev.id).order('order_no', { ascending: true });
     if (!state.event || state.event.id !== ev.id) return;
     if (lostSession(res.error)) return;
@@ -327,6 +327,30 @@
       }).catch(function (err) { state.blobs.delete(path); throw err; }));
     }
     return state.blobs.get(path);
+  }
+  /* The decoded picture for a path, ready to draw. */
+  function photoPic(path) {
+    if (!state.pics.has(path)) {
+      state.pics.set(path, photoBlob(path).then(function (b) {
+        return new Promise(function (resolve, reject) {
+          var img = new Image();
+          img.onload = function () { resolve({ img: img, iw: img.naturalWidth, ih: img.naturalHeight }); };
+          img.onerror = function () { reject(new Error('DECODE')); };
+          img.src = b.url;
+        });
+      }).catch(function (err) { state.pics.delete(path); throw err; }));
+    }
+    return state.pics.get(path);
+  }
+  /* How a photo is framed: the guest's choice, or the staff fix saved over it. */
+  function framing(p) {
+    return { zoom: Number(p.crop_zoom) || 1, cx: p.crop_x == null ? 0.5 : Number(p.crop_x), cy: p.crop_y == null ? 0.5 : Number(p.crop_y) };
+  }
+  function drawFramed(canvas, pic, f) {
+    var g = canvas.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
+    g.imageSmoothingQuality = 'high';
+    C.drawCrop(g, { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy }, 0, 0, canvas.width);
   }
   function waitingRows() {
     var rows = [];
@@ -387,14 +411,18 @@
       if (o.note) li.appendChild(el('p', 'guest-note', 'Note: ' + o.note));
       var thumbs = el('div', 'thumbs');
       o.order_photos.forEach(function (p) {
-        var t = el('div', 'thumb' + (p.printed_at ? ' printed' : ''));
-        var img = document.createElement('img'); img.alt = 'Photo for order ' + o.order_no;
-        photoBlob(p.path).then(function (b) { img.src = b.url; }).catch(function () { img.alt = 'Photo could not load'; });
-        t.appendChild(img);
-        if (p.qty > 1) t.appendChild(el('span', null, '×' + p.qty));
+        var t = el('button', 'thumb' + (p.printed_at ? ' printed' : '')); t.type = 'button';
+        t.title = 'Fix how this photo is framed';
+        t.setAttribute('aria-label', 'Fix photo for order ' + o.order_no);
+        var cv = document.createElement('canvas'); cv.width = cv.height = 132;
+        photoPic(p.path).then(function (pic) { drawFramed(cv, pic, framing(p)); }).catch(function () { t.title = 'Photo could not load'; });
+        t.appendChild(cv);
+        if (p.qty > 1) t.appendChild(el('span', null, 'x' + p.qty));
+        t.addEventListener('click', function () { openFix(o, p); });
         thumbs.appendChild(t);
       });
       li.appendChild(thumbs);
+      li.appendChild(el('p', 'note', 'Tap a photo to fix how it is framed.'));
 
       var actions = el('div', 'row');
       var printed = o.order_photos.some(function (p) { return p.printed_at; });
@@ -432,6 +460,49 @@
     loadOrders();
   }
 
+  /* ---------- fix how a guest framed a photo ---------- */
+  var fixEditor = C.attachEditor($('fix-canvas'), function () { return state.fixing ? state.fixing.item : null; }, function () { fixButtons(); });
+  function fixButtons() {
+    var it = state.fixing && state.fixing.item; if (!it) return;
+    $('fix-out').disabled = it.zoom <= 1.001; $('fix-in').disabled = it.zoom >= 2.999;
+  }
+  function closeFix() { state.fixing = null; $('fix').hidden = true; }
+  async function openFix(order, photo) {
+    note('fix-msg', '');
+    $('fix-who').textContent = 'Order #' + order.order_no + ' for ' + order.guest_name + (photo.printed_at ? '. Already printed, so print the order again after saving.' : '');
+    try {
+      var pic = await photoPic(photo.path), f = framing(photo);
+      state.fixing = { order: order, photo: photo, item: { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy } };
+      C.normalize(state.fixing.item);
+      $('fix').hidden = false;
+      fixEditor.draw(); fixButtons();
+    } catch (err) { note('queue-msg', 'That photo could not be opened. Check the connection and try again.', 'bad'); }
+  }
+  function fixZoom(step) {
+    var it = state.fixing && state.fixing.item; if (!it) return;
+    it.zoom = C.clamp(Math.round((it.zoom + step) * 100) / 100, 1, 3);
+    C.normalize(it); fixEditor.draw(); fixButtons();
+  }
+  $('fix-in').addEventListener('click', function () { fixZoom(0.25); });
+  $('fix-out').addEventListener('click', function () { fixZoom(-0.25); });
+  $('fix-reset').addEventListener('click', function () {
+    var it = state.fixing && state.fixing.item; if (!it) return;
+    it.zoom = 1; it.cx = 0.5; it.cy = 0.5; C.normalize(it); fixEditor.draw(); fixButtons();
+  });
+  $('fix-cancel').addEventListener('click', closeFix);
+  $('fix').addEventListener('click', function (e) { if (e.target === this) closeFix(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && state.fixing) closeFix(); });
+  $('fix-save').addEventListener('click', async function () {
+    var fx = state.fixing; if (!fx) return;
+    var btn = this, it = fx.item; btn.disabled = true; note('fix-msg', 'Saving.');
+    var r = await sb.from('order_photos').update({ crop_zoom: it.zoom, crop_x: it.cx, crop_y: it.cy }).eq('id', fx.photo.id);
+    btn.disabled = false;
+    if (lostSession(r.error)) { closeFix(); return; }
+    if (r.error) { note('fix-msg', 'That did not save. Check the connection and try again.', 'bad'); return; }
+    closeFix(); discardPending();
+    await loadOrders();
+  });
+
   /* ---------- after the event ---------- */
   var purgeMode = 'purge';
   function purgeReset() { $('purge-confirm').hidden = true; $('purge-open').hidden = false; $('remove-open').hidden = false; }
@@ -463,7 +534,7 @@
       var out = await purgeEvent(ev, say);
       state.event = out.event; renderStatus();
       state.blobs.forEach(function (pr) { pr.then(function (b) { URL.revokeObjectURL(b.url); }).catch(function () {}); });
-      state.blobs = new Map(); state.sig = ''; state.known = null; clearNew();
+      state.blobs = new Map(); state.pics = new Map(); state.sig = ''; state.known = null; clearNew();
       await loadOrders();
       note('purge-msg', 'Done. ' + (out.removed === 1 ? '1 photo was' : out.removed + ' photos were') + ' deleted along with the orders.', 'good');
     } catch (err) {
@@ -474,14 +545,6 @@
   });
 
   /* ---------- print sheets ---------- */
-  function toDataUrl(blob) {
-    return new Promise(function (resolve, reject) {
-      var fr = new FileReader();
-      fr.onload = function () { resolve(fr.result); };
-      fr.onerror = function () { reject(fr.error); };
-      fr.readAsDataURL(blob);
-    });
-  }
   function pickOneSheet(rows, per) {
     var out = [], n = 0;
     for (var i = 0; i < rows.length && n < per; i++) {
@@ -493,8 +556,10 @@
     var slots = [], images = {};
     rows.forEach(function (r) { for (var i = 0; i < r.photo.qty; i++) slots.push(r); });
     for (var k = 0; k < rows.length; k++) {
-      var b = await photoBlob(rows[k].photo.path);
-      images[rows[k].photo.id] = await toDataUrl(b.blob);
+      var pic = await photoPic(rows[k].photo.path), c = document.createElement('canvas');
+      c.width = c.height = Math.round(T.photo * 300);
+      drawFramed(c, pic, framing(rows[k].photo));
+      images[rows[k].photo.id] = c.toDataURL('image/jpeg', 0.92);
     }
     var stamp = new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     return Sheet.buildPdf(T, slots, {

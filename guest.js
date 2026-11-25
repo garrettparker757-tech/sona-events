@@ -119,7 +119,7 @@
   }
 
   /* ---------- adjust one photo ---------- */
-  var editor = C.attachEditor($('editor-canvas'), function () { return state.editing; }, function (it) { it.rev++; it.uploaded = null; syncZoom(); });
+  var editor = C.attachEditor($('editor-canvas'), function () { return state.editing; }, function () { syncZoom(); });
   function syncZoom() {
     var it = state.editing; if (!it) return;
     $('zoom-out').disabled = it.zoom <= 1.001;
@@ -128,7 +128,7 @@
   function zoomBy(step) {
     var it = state.editing; if (!it) return;
     it.zoom = C.clamp(Math.round((it.zoom + step) * 100) / 100, 1, 3);
-    C.normalize(it); it.rev++; it.uploaded = null; editor.draw(); syncZoom();
+    C.normalize(it); editor.draw(); syncZoom();
   }
   function openEditor(it) {
     state.editing = it;
@@ -151,15 +151,17 @@
     note('form-msg', '');
     show('view-name', 'guest-name');
   }
+  /* The whole photo goes up (scaled to a sensible size) along with how it was framed,
+     so staff can re-frame it later if the crop turns out wrong. */
   function renderBlob(it) {
     return new Promise(function (resolve) {
-      var n = CFG.uploadPx, c = document.createElement('canvas');
-      c.width = c.height = n;
+      var k = Math.min(1, CFG.uploadPx / Math.max(it.iw, it.ih)), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(it.iw * k)); c.height = Math.max(1, Math.round(it.ih * k));
       var g = c.getContext('2d');
-      g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
       g.imageSmoothingQuality = 'high';
-      C.drawCrop(g, it, 0, 0, n);
-      c.toBlob(function (b) { resolve(b); }, 'image/jpeg', 0.9);
+      g.drawImage(it.img, 0, 0, c.width, c.height);
+      c.toBlob(function (b) { resolve(b); }, 'image/jpeg', 0.88);
     });
   }
   function friendly(err) {
@@ -203,7 +205,7 @@
         var it = state.items[i];
         progress('Sending photo ' + (i + 1) + ' of ' + state.items.length + '.', i, steps);
         if (it.uploaded) continue;
-        var path = state.event.id + '/' + state.orderId + '/' + it.id + '-' + it.rev + '.jpg';
+        var path = state.event.id + '/' + state.orderId + '/' + it.id + '.jpg';
         await uploadOne(it, path);
         it.uploaded = path;
       }
@@ -213,7 +215,7 @@
         res = await sb.rpc('submit_order', {
           p_slug: slug, p_order_id: state.orderId, p_name: name,
           p_contact: $('guest-contact').value.trim(),
-          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty }; }),
+          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty, zoom: x.zoom, cx: x.cx, cy: x.cy }; }),
           p_note: $('guest-note').value.trim()
         });
         if (!res.error || /EVENT_CLOSED|TOO_MANY|BAD_/.test(String(res.error.message || ''))) break;

@@ -184,6 +184,26 @@
   </div>
 </div>
 
+<!-- Staff: re-frame a guest's photo -->
+<div class="backdrop" id="fix" hidden>
+  <div class="editor card" role="dialog" aria-modal="true" aria-labelledby="fix-title">
+    <h2 id="fix-title">Fix this photo</h2>
+    <p class="note" id="fix-who"></p>
+    <canvas id="fix-canvas" width="720" height="720" tabindex="0" aria-label="The guest's photo. Drag to move it."></canvas>
+    <div class="zoomrow">
+      <button class="btn small" type="button" id="fix-out">&minus; Smaller</button>
+      <button class="btn small" type="button" id="fix-in">+ Bigger</button>
+    </div>
+    <p class="legend"><i></i>Drag to move. Everything inside the dashed square shows on the front of the magnet.</p>
+    <div class="row">
+      <button class="btn primary" type="button" id="fix-save">Save</button>
+      <button class="btn small" type="button" id="fix-reset">Centre it</button>
+      <button class="btn small" type="button" id="fix-cancel">Cancel</button>
+    </div>
+    <p class="note" id="fix-msg" role="status"></p>
+  </div>
+</div>
+
 <section id="poster" aria-hidden="true">
   <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
   <img class="poster-logo" src="/logo.png" alt="">

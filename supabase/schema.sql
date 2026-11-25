@@ -13,3 +13,5 @@
 --  * event_upload_paths() lists an event's uploaded photos so the staff page can delete them.
 --  * Sign-ups are closed: a trigger on auth.users only lets an account be created for an email in public.staff.
 --    To add staff: insert the email into public.staff first, then add the user in Supabase.
+--  * order_photos keeps how each photo is framed (crop_zoom, crop_x, crop_y). Guests send the whole
+--    photo, and staff can re-frame it from the staff page without the guest re-sending anything.

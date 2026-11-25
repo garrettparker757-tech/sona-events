@@ -7,5 +7,6 @@ window.SONA = {
   crop: { face: 2.0, photo: 2.16 },
   /* Overrides for the print sheet (see sheet.js for every setting), e.g. { bottomText: 'made in RVA' }. */
   template: {},
-  uploadPx: 1000
+  /* Longest side, in pixels, of the photo a guest's phone sends. */
+  uploadPx: 1600
 };
