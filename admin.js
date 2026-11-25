@@ -7,9 +7,17 @@
   var state = {
     events: [], event: null, orders: [], sig: '', timer: null, blobs: new Map(), pending: null, busy: false,
     known: null, fresh: {}, unseen: 0, filter: 'todo', query: '', sound: false, audio: null, pics: new Map(), fixing: null,
-    kind: 'market', overlay: null
+    kind: 'market', overlay: null, loadSeq: 0, channel: null, kick: null
   };
   var sb = null;
+  /* Each phone or computer gets its own id, so two devices never put the same magnets on two sheets. */
+  var DEVICE = (function () {
+    var id = null;
+    try { id = localStorage.getItem('sona-device'); } catch (err) {}
+    if (!id || id.length < 8) { id = 'dev-' + C.uuid(); try { localStorage.setItem('sona-device', id); } catch (err) {} }
+    return id.slice(0, 64);
+  })();
+  var HOLD_MS = 5 * 60 * 1000;
   var TITLE = 'Sona Events staff';
 
   function show(view) {
@@ -133,7 +141,7 @@
     $('new-note').hidden = !special;
     $('list-title').textContent = special ? 'Your special events' : 'Your markets';
     $('ev-name').placeholder = special ? 'Taylor and Jordan wedding' : 'South of the James Market';
-    $('ev-welcome').placeholder = special ? 'Made in 10-15 minutes.' : 'Made in 10-15 minutes while you shop around.';
+    $('ev-welcome').placeholder = special ? 'Pick up your magnets before the end of the event.' : 'Made in 10-15 minutes while you shop around.';
     var ul = $('events'); ul.replaceChildren();
     var mine = state.events.filter(function (ev) { return kindOf(ev) === state.kind; });
     mine.forEach(function (ev) {
@@ -204,7 +212,10 @@
     $('set-name').value = ev.name; $('set-max').value = ev.max_magnets;
     $('set-welcome').value = ev.welcome || ''; $('set-contact').checked = !!ev.ask_contact;
     $('set-prices').checked = ev.show_prices !== false;
-    $('poster-qr-sub').textContent = kindOf(ev) === 'private' ? 'Made in 10-15 minutes.' : 'Made in 10-15 minutes while you shop around.';
+    var special = kindOf(ev) === 'private';
+    $('poster-qr-sub').textContent = special ? 'Pick them up before the end of the event.' : 'Made in 10-15 minutes while you shop around.';
+    $('poster-step3').textContent = special ? 'Pick up before you leave' : 'Ready in 10-15 minutes';
+    Array.prototype.forEach.call(document.querySelectorAll('#view-event .market-only'), function (b) { b.hidden = special; });
     $('st-unpaid').parentNode.hidden = !priced(); $('st-collected').parentNode.hidden = !priced();
   }
   function renderStatus() {
@@ -247,9 +258,28 @@
     $('page-title').textContent = ev.name;
     loadOrders();
     stopPolling();
-    state.timer = setInterval(function () { if (!document.hidden) loadOrders(); }, 5000);
+    startPolling();
   }
-  function stopPolling() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+  /* Two ways of staying in step with the other devices: the server tells this page the moment
+     something changes, and the page also re-checks by itself every few seconds in case that is missed. */
+  function startPolling() {
+    var ev = state.event; if (!ev) return;
+    if (!state.timer) state.timer = setInterval(function () { if (!document.hidden) loadOrders(); }, 4000);
+    if (state.channel || !sb.channel) return;
+    try {
+      var kick = function () { clearTimeout(state.kick); state.kick = setTimeout(loadOrders, 250); };
+      state.channel = sb.channel('event-' + ev.id)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: 'event_id=eq.' + ev.id }, kick)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'order_photos' }, kick)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: 'id=eq.' + ev.id }, kick)
+        .subscribe();
+    } catch (err) { state.channel = null; }
+  }
+  function stopPolling() {
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    clearTimeout(state.kick);
+    if (state.channel) { try { sb.removeChannel(state.channel); } catch (err) {} state.channel = null; }
+  }
   document.addEventListener('visibilitychange', function () { if (!document.hidden && state.event) loadOrders(); });
   Array.prototype.forEach.call(document.querySelectorAll('.seg button[data-status]'), function (b) {
     b.addEventListener('click', function () { setStatus(b.dataset.status); });
@@ -345,14 +375,44 @@
 
   /* ---------- queue ---------- */
   function byCreated(a, b) { return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0; }
+  /* The event itself can change on another device: closed, renamed, a new overlay, even removed. */
+  async function syncEvent(row) {
+    var old = state.event;
+    if (!row) {
+      if (state.busy) return false;
+      stopPolling(); discardPending(true); state.event = null;
+      await loadEvents(); show('view-events');
+      note('events-msg', '"' + old.name + '" was removed on another device.');
+      return false;
+    }
+    if (JSON.stringify(row) === JSON.stringify(old)) return true;
+    state.event = row;
+    if (old.status !== row.status) renderStatus();
+    if (!$('settings-form').contains(document.activeElement)) renderEventInfo();
+    if (old.show_prices !== row.show_prices || old.max_magnets !== row.max_magnets) state.sig = '';
+    var moved = old.overlay_path !== row.overlay_path || Number(old.overlay_scale) !== Number(row.overlay_scale) ||
+      Number(old.overlay_x) !== Number(row.overlay_x) || Number(old.overlay_y) !== Number(row.overlay_y);
+    if (moved) { await loadOverlay(row); note('ov-msg', 'The overlay was changed on another device.'); }
+    return true;
+  }
+  function heldElsewhere(p) {
+    return !p.printed_at && p.claimed_at && p.claimed_by && p.claimed_by !== DEVICE && Date.now() - Date.parse(p.claimed_at) < HOLD_MS;
+  }
   async function loadOrders() {
     var ev = state.event; if (!ev) return;
-    var res = await sb.from('orders')
-      .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y)')
-      .eq('event_id', ev.id).order('order_no', { ascending: true });
-    if (!state.event || state.event.id !== ev.id) return;
+    var seq = ++state.loadSeq;
+    var both = await Promise.all([
+      sb.from('orders')
+        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, claimed_at, claimed_by)')
+        .eq('event_id', ev.id).order('order_no', { ascending: true }),
+      sb.from('events').select('*').eq('id', ev.id).maybeSingle()
+    ]);
+    var res = both[0], evRes = both[1];
+    if (seq !== state.loadSeq || !state.event || state.event.id !== ev.id) return;
     if (lostSession(res.error)) return;
     if (res.error) { note('queue-msg', 'No connection. Trying again.', 'bad'); return; }
+    if (!evRes.error && !(await syncEvent(evRes.data))) return;
+    if (seq !== state.loadSeq || !state.event) return;
     res.data.forEach(function (o) { o.order_photos.sort(byCreated); });
     if (state.known) {
       var fresh = res.data.filter(function (o) { return !state.known[o.id]; });
@@ -362,8 +422,30 @@
     res.data.forEach(function (o) { state.known[o.id] = true; });
     var sig = JSON.stringify(res.data);
     state.orders = res.data;
-    if (sig !== state.sig) { state.sig = sig; renderOrders(); }
-    note('queue-msg', 'Updates every 5 seconds.');
+    checkPending();
+    /* a hold on another device runs out with time, so redraw while any is showing */
+    var holds = res.data.some(function (o) { return o.order_photos.some(function (p) { return !p.printed_at && p.claimed_at && p.claimed_by !== DEVICE; }); });
+    if (sig !== state.sig || holds) { state.sig = sig; renderOrders(); }
+    note('queue-msg', 'In step with your other devices.');
+  }
+  /* A sheet built here but not opened yet: keep its magnets reserved, and drop it if another device got there first. */
+  function checkPending() {
+    var pend = state.pending; if (!pend || pend.marked) return;
+    var now = {};
+    state.orders.forEach(function (o) { o.order_photos.forEach(function (p) { now[p.id] = p; }); });
+    var lost = pend.rows.some(function (r) {
+      var p = now[r.photo.id];
+      return !p || (pend.claimed.indexOf(r.photo.id) >= 0 && (p.printed_at || heldElsewhere(p)));
+    });
+    if (lost) {
+      discardPending();
+      note('print-msg', 'Another device printed or changed some of those magnets, so that sheet was cancelled. Nothing is lost: press the print button again.', 'bad');
+      return;
+    }
+    if (pend.claimed.length && Date.now() - pend.claimedAt > 60000) {
+      pend.claimedAt = Date.now();
+      sb.rpc('claim_photos', { p_ids: pend.claimed, p_device: DEVICE }).then(function () {}, function () {});
+    }
   }
   function photoBlob(path) {
     if (!state.blobs.has(path)) {
@@ -403,9 +485,74 @@
     var rows = [];
     state.orders.forEach(function (o) {
       if (o.status === 'done') return;
-      o.order_photos.forEach(function (p) { if (!p.printed_at) rows.push({ order: o, photo: p }); });
+      o.order_photos.forEach(function (p) { if (!p.printed_at && !heldElsewhere(p) && !onMySheet(p)) rows.push({ order: o, photo: p }); });
     });
     return rows;
+  }
+  /* On the sheet this device has built but not opened yet. */
+  function onMySheet(p) {
+    var pend = state.pending;
+    return !!pend && !pend.marked && !p.printed_at && pend.claimed.indexOf(p.id) >= 0;
+  }
+  function mineCount() {
+    var n = 0;
+    state.orders.forEach(function (o) { if (o.status !== 'done') o.order_photos.forEach(function (p) { if (onMySheet(p)) n += p.qty; }); });
+    return n;
+  }
+  function tally(rows) { return rows.reduce(function (n, r) { return n + r.photo.qty; }, 0); }
+  /* Magnets sitting on a sheet that another device is printing right now. */
+  function heldCount() {
+    var n = 0;
+    state.orders.forEach(function (o) { if (o.status !== 'done') o.order_photos.forEach(function (p) { if (heldElsewhere(p)) n += p.qty; }); });
+    return n;
+  }
+  /* The oldest waiting magnets that fill whole sheets with no empty squares. Photos are never split:
+     if the count is not a multiple of a sheet, the newest ones that make up the difference wait. */
+  function fullSheetRows(rows, per) {
+    var total = tally(rows), n = rows.length, cap = Math.min(total, 240);
+    if (total < per) return [];
+    var reach = [new Uint8Array(cap + 1)], i, s;
+    reach[0][0] = 1;
+    for (i = 0; i < n; i++) {
+      var q = rows[i].photo.qty, prev = reach[i], next = new Uint8Array(prev);
+      for (s = q; s <= cap; s++) if (prev[s - q]) next[s] = 1;
+      reach.push(next);
+    }
+    var drop = -1;
+    for (s = total % per; s <= cap; s += per) if (reach[n][s]) { drop = s; break; }
+    if (drop < 0 || drop === total) return [];
+    var keep = [];
+    for (i = n - 1; i >= 0; i--) {
+      var qty = rows[i].photo.qty;
+      if (drop >= qty && reach[i][drop - qty]) drop -= qty; else keep.unshift(rows[i]);
+    }
+    return keep;
+  }
+  function renderSheetMeter() {
+    var per = layout().per, rows = waitingRows(), waiting = tally(rows), full = tally(fullSheetRows(rows, per));
+    var sheets = full / per, rest = waiting - full, held = heldCount(), mine = mineCount(), special = state.event && kindOf(state.event) === 'private';
+    var shown = full ? per : waiting % per, cells = $('mini').children;
+    for (var i = 0; i < cells.length; i++) cells[i].className = i < shown ? 'on' : '';
+    $('mini').className = 'minisheet' + (full ? ' full' : '');
+    var missing = (per - rest % per) % per, text;
+    if (!waiting) text = mine ? 'Nothing else is waiting to print.' : 'Nothing is waiting to print.';
+    else if (full) text = plural(sheets, 'full sheet') + ' ready (' + plural(full, 'magnet') + ').' + (rest ? ' ' + rest + ' more waiting, ' + missing + ' short of the next sheet.' : '');
+    else if (waiting < per) text = waiting + ' of ' + per + ' waiting. ' + missing + ' more ' + (missing === 1 ? 'fills' : 'fill') + ' the sheet.';
+    else text = plural(waiting, 'magnet') + ' waiting. ' + missing + ' more ' + (missing === 1 ? 'fills' : 'fill') + ' the last sheet.';
+    $('sheet-text').textContent = text;
+    $('sheet-held').textContent = [
+      mine ? plural(mine, 'magnet') + (mine === 1 ? ' is' : ' are') + ' on your sheet below, ready to open.' : '',
+      held ? plural(held, 'magnet') + (held === 1 ? ' is' : ' are') + ' on a sheet another device is printing right now.' : ''
+    ].filter(Boolean).join(' ');
+    var one = $('print-one'), all = $('print-all');
+    /* one sheet at a time on each device: open or cancel the ready one first */
+    one.disabled = !full || mine > 0; all.disabled = mine > 0;
+    one.textContent = full ? 'Print ' + plural(sheets, 'full sheet') + ' (' + plural(full, 'magnet') + ')' : 'No full sheet yet';
+    one.className = 'btn' + (full ? ' primary' : '');
+    all.hidden = !rest;
+    all.textContent = full || waiting > per ? 'Print everything waiting (' + plural(waiting, 'magnet') + ', ' + plural(Math.ceil(waiting / per), 'sheet') + ')'
+      : 'Print ' + (waiting === 1 ? 'this 1' : 'these ' + waiting) + ' now (part of a sheet)';
+    all.className = 'btn' + (!full && !special ? ' primary' : '');
   }
   function layout() { return Sheet.geometry(T); }
   function renderFilter() {
@@ -418,17 +565,18 @@
 
   function renderOrders() {
     var rank = { 'new': 0, printed: 1, done: 2 }, per = layout().per;
-    var waiting = waitingRows().reduce(function (n, r) { return n + r.photo.qty; }, 0);
+    var waiting = tally(waitingRows()) + heldCount() + mineCount(), printedCount = 0;
+    state.orders.forEach(function (o) { o.order_photos.forEach(function (p) { if (p.printed_at) printedCount += p.qty; }); });
     var doneCount = state.orders.filter(function (o) { return o.status === 'done'; }).length;
     $('st-waiting').textContent = waiting;
+    $('st-printed').textContent = printedCount;
+    renderSheetMeter();
     $('st-orders').textContent = state.orders.length;
     $('st-done').textContent = doneCount;
     var unpaid = 0, collected = 0;
     state.orders.forEach(function (o) { if (o.paid_at) collected += Number(o.paid_amount) || 0; else unpaid++; });
     $('st-unpaid').textContent = unpaid;
     $('st-collected').textContent = C.money(collected);
-    $('print-one').disabled = !waiting; $('print-all').disabled = !waiting;
-    if ($('ready').hidden) note('print-msg', waiting ? (waiting === 1 ? '1 magnet is' : waiting + ' magnets are') + ' waiting. A full sheet holds ' + per + '.' : 'Nothing is waiting to print.');
     var labels = { todo: 'To do (' + (state.orders.length - doneCount) + ')', done: 'Picked up (' + doneCount + ')', all: 'All (' + state.orders.length + ')' };
     Array.prototype.forEach.call(document.querySelectorAll('.seg button[data-filter]'), function (b) { b.textContent = labels[b.dataset.filter]; });
 
@@ -459,7 +607,8 @@
       if (money) meta.appendChild(el('span', 'chip ' + (o.paid_at ? 'paid' : 'unpaid'), o.paid_at ? 'Paid' : 'Not paid'));
       meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(o.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
       var label = o.status === 'new' ? 'Waiting to print' : o.status === 'printed' ? 'Printed' : 'Picked up';
-      meta.appendChild(el('span', 'chip ' + o.status, label));
+      var busyElsewhere = o.status === 'new' && o.order_photos.some(heldElsewhere);
+      meta.appendChild(el('span', 'chip ' + (busyElsewhere ? 'held' : o.status), busyElsewhere ? 'Printing on another device' : label));
       head.appendChild(meta);
       li.appendChild(head);
 
@@ -502,7 +651,7 @@
       if (printed && o.status !== 'done') {
         var again = el('button', 'btn small', 'Put back in the print queue'); again.type = 'button';
         again.addEventListener('click', async function () {
-          var r = await sb.from('order_photos').update({ printed_at: null }).eq('order_id', o.id);
+          var r = await sb.from('order_photos').update({ printed_at: null, claimed_at: null, claimed_by: null }).eq('order_id', o.id);
           if (lostSession(r.error)) return;
           if (r.error) { note('queue-msg', 'That did not save. Try again.', 'bad'); return; }
           setOrder(o, { status: 'new' });
@@ -766,19 +915,12 @@
       note('purge-msg', 'Done. ' + (out.removed === 1 ? '1 photo was' : out.removed + ' photos were') + ' deleted along with the orders.', 'good');
     } catch (err) {
       if (!lostSession(err)) note('purge-msg', STOPPED, 'bad');
-      if (purgeMode === 'remove' && state.event && !state.timer) state.timer = setInterval(function () { if (!document.hidden) loadOrders(); }, 5000);
+      if (purgeMode === 'remove' && state.event) startPolling();
     }
     state.busy = false; btn.disabled = false; purgeReset();
   });
 
   /* ---------- print sheets ---------- */
-  function pickOneSheet(rows, per) {
-    var out = [], n = 0;
-    for (var i = 0; i < rows.length && n < per; i++) {
-      if (n + rows[i].photo.qty <= per) { out.push(rows[i]); n += rows[i].photo.qty; }
-    }
-    return out.length ? out : rows.slice(0, 1);
-  }
   async function buildPdf(rows) {
     /* Never print an overlay event without its overlay. */
     if (state.event.overlay_path && !state.overlay) {
@@ -802,8 +944,16 @@
   }
   var HINT_BEFORE = 'Opening the PDF marks these magnets as printed, so they will not print twice.';
   var HINT_AFTER = 'Marked as printed. Print at 100% (Actual size). If the print fails, print again from the PDF tab, or use the buttons on the order.';
-  function discardPending() {
-    if (state.pending) { URL.revokeObjectURL(state.pending.url); state.pending = null; }
+  function release(ids) {
+    if (!ids || !ids.length) return Promise.resolve();
+    return sb.rpc('release_photos', { p_ids: ids, p_device: DEVICE }).then(function () {}, function () {});
+  }
+  function discardPending(quiet) {
+    var pend = state.pending;
+    if (pend) {
+      URL.revokeObjectURL(pend.url); state.pending = null;
+      if (!pend.marked && !quiet) release(pend.claimed).then(function () { if (state.event) loadOrders(); });
+    }
     $('ready').hidden = true;
   }
   async function makeSheets(mode, order) {
@@ -811,23 +961,52 @@
     if (!window.jspdf) { note('print-msg', 'The PDF tool did not load. Reload the page.', 'bad'); return; }
     var rows;
     if (mode === 'order') rows = order.order_photos.map(function (p) { return { order: order, photo: p }; });
-    else { rows = waitingRows(); if (mode === 'one') rows = pickOneSheet(rows, layout().per); }
+    else { rows = waitingRows(); if (mode === 'full') rows = fullSheetRows(rows, layout().per); }
     if (!rows.length) return;
-    state.busy = true; discardPending();
+    state.busy = true;
+    /* let go of an unopened sheet before reserving again, in that order */
+    var before = state.pending && !state.pending.marked ? state.pending.claimed : [];
+    discardPending(true);
     note('print-msg', 'Building the PDF.');
+    var claimed = [], shared = false;
     try {
+      await release(before);
+      /* reserve the magnets first, so another device cannot put them on its own sheet */
+      var need = rows.filter(function (r) { return !r.photo.printed_at; }).map(function (r) { return r.photo.id; });
+      if (need.length) {
+        var got = await sb.rpc('claim_photos', { p_ids: need, p_device: DEVICE });
+        if (got.error) throw got.error;
+        claimed = (got.data || []).map(function (x) { return typeof x === 'string' ? x : (x && (x.id || x.claim_photos)); });
+        if (claimed.length < need.length) {
+          if (mode === 'order') {
+            release(claimed); state.busy = false;
+            note('print-msg', 'Another device is printing order #' + order.order_no + ' right now, so it was not printed again here.', 'bad');
+            loadOrders(); return;
+          }
+          rows = rows.filter(function (r) { return r.photo.printed_at || claimed.indexOf(r.photo.id) >= 0; });
+          shared = true;
+          if (!rows.length) {
+            state.busy = false;
+            note('print-msg', 'Another device just took those magnets for its own sheet. Nothing was left to print here.', 'bad');
+            loadOrders(); return;
+          }
+        }
+      }
       var out = await buildPdf(rows), url = URL.createObjectURL(out.blob);
-      state.pending = { rows: rows, url: url, marked: false };
+      state.pending = { rows: rows, url: url, marked: false, claimed: claimed, claimedAt: Date.now() };
       $('ready-text').textContent = 'Ready: ' + (mode === 'order' ? 'order #' + order.order_no + ' for ' + order.guest_name + ', ' : '') +
-        plural(out.magnets, 'magnet') + ' on ' + plural(out.sheets, 'sheet') + '.';
+        plural(out.magnets, 'magnet') + ' on ' + plural(out.sheets, 'sheet') + '.' + (shared ? ' Another device took the rest for its own sheet.' : '');
       $('ready-open').href = url; $('ready-open').textContent = 'Open PDF to print';
       $('ready-save').href = url; $('ready-save').download = 'sona-sheets-' + Date.now() + '.pdf';
       $('ready-hint').textContent = HINT_BEFORE;
       $('ready-discard').hidden = false; $('ready-mark').hidden = true; $('ready-done').hidden = true;
       $('ready').hidden = false;
       note('print-msg', '');
+      renderOrders();
       $('ready').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      loadOrders();
     } catch (err) {
+      release(claimed);
       if (!lostSession(err)) note('print-msg', String(err && err.message) === 'OVERLAY' ? 'The overlay for this event could not load, so no sheet was made. Check the connection and try again.' : 'The PDF could not be built. Check the connection and try again.', 'bad');
     }
     state.busy = false;
@@ -839,7 +1018,7 @@
     $('ready-open').textContent = 'Open PDF again';
     $('ready-hint').textContent = HINT_AFTER;
     var ids = pend.rows.map(function (r) { return r.photo.id; });
-    var r1 = await sb.from('order_photos').update({ printed_at: new Date().toISOString() }).in('id', ids);
+    var r1 = await sb.from('order_photos').update({ printed_at: new Date().toISOString(), claimed_at: null, claimed_by: null }).in('id', ids);
     if (r1.error) {
       pend.marked = false;
       if (lostSession(r1.error)) return;
@@ -856,7 +1035,7 @@
     if (finished.length) await sb.from('orders').update({ status: 'printed' }).in('id', finished).eq('status', 'new');
     await loadOrders();
   }
-  $('print-one').addEventListener('click', function () { makeSheets('one'); });
+  $('print-one').addEventListener('click', function () { makeSheets('full'); });
   $('print-all').addEventListener('click', function () { makeSheets('all'); });
   /* The links open or save the PDF by themselves; marking happens alongside. */
   $('ready-open').addEventListener('click', function () { markPending(); });

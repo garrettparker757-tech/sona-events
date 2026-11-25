@@ -37,7 +37,9 @@
       var saved = JSON.parse(localStorage.getItem(storeKey()) || 'null');
       if (!saved || Date.now() - saved.at > 12 * 3600 * 1000) return;
       $('last-no').textContent = 'Your order number is ' + saved.no + '.';
-      $('last-text').textContent = 'Magnets take 10-15 minutes. Pick them up at the table under the name ' + saved.name + '. You can order more below.';
+      $('last-text').textContent = (state.event && state.event.kind === 'private'
+        ? 'Pick your magnets up at the Sona Magnets table before the end of the event, under the name '
+        : 'Magnets take 10-15 minutes. Pick them up at the table under the name ') + saved.name + '. You can order more below.';
       $('last-order').hidden = false;
     } catch (err) {}
   }
@@ -310,7 +312,9 @@
       var cost = priceOf(count);
       $('done-total').textContent = cost != null ? C.money(cost) : '';
       $('done-totalbox').hidden = cost == null;
-      $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. They will be ready in 10-15 minutes' + (state.event.kind === 'private' ? '.' : ', so feel free to shop around.') + ' Then come back to the table and tell us your name or order number.';
+      $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. ' + (state.event.kind === 'private'
+        ? 'They will be ready a little later, so please pick them up at the Sona Magnets table before the end of the event. Just tell us your name or order number.'
+        : 'They will be ready in 10-15 minutes, so feel free to shop around. Then come back to the table and tell us your name or order number.');
       try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, at: Date.now() })); } catch (err) {}
       state.items = []; state.orderId = null;
       $('last-order').hidden = true;
@@ -353,7 +357,7 @@
     state.event = ev;
     document.title = ev.name + ' | Sona Magnets';
     $('event-name').textContent = ev.name;
-    $('welcome').textContent = ev.welcome || (ev.kind === 'private' ? 'Your photos, made into magnets in 10-15 minutes.' : 'Your photos, made into magnets in 10-15 minutes while you shop around.');
+    $('welcome').textContent = ev.welcome || (ev.kind === 'private' ? 'Your photos, made into magnets. Pick them up before the end of the event.' : 'Your photos, made into magnets in 10-15 minutes while you shop around.');
     if (ev.status !== 'live') { closed('Orders are closed', 'This event is not taking photo orders right now. Please ask us at the Sona Magnets table.'); return; }
     $('contact-wrap').hidden = !ev.ask_contact;
     if (ev.overlay_path) {

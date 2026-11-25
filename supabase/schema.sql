@@ -19,3 +19,6 @@
 --  * Special events: events.kind ('market' or 'private'), events.show_prices, and an overlay picture
 --    (events.overlay_path in the public "overlays" bucket, plus overlay_scale / overlay_x / overlay_y,
 --    measured on the front of the magnet). Up to 100 magnets per order (events.max_magnets, order_photos.qty).
+--  * Two staff devices: order_photos.claimed_at / claimed_by reserve magnets for the sheet one device is
+--    printing (claim_photos / release_photos, a reservation lasts 5 minutes unless renewed). orders,
+--    order_photos and events are in the supabase_realtime publication so staff pages update at once.

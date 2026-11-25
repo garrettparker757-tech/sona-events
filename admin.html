@@ -96,8 +96,8 @@
         <button class="btn small" type="button" id="copy-link">Copy link</button>
         <a class="btn small" id="open-link" target="_blank" rel="noopener">Open guest page</a>
         <button class="btn small primary" type="button" data-print="qr-sign">Print QR sign</button>
-        <button class="btn small" type="button" data-print="how">Print "How it works" sign</button>
-        <button class="btn small" type="button" data-print="prices">Print price sign</button>
+        <button class="btn small market-only" type="button" data-print="how">Print "How it works" sign</button>
+        <button class="btn small market-only" type="button" data-print="prices">Print price sign</button>
       </div>
       <p class="note">Customer's phone not cooperating? Use Open guest page and place the order for them on this device.</p>
 
@@ -168,15 +168,23 @@
           <h2>Print</h2>
           <ul class="stats" aria-live="polite">
             <li><b id="st-waiting">0</b>magnets waiting</li>
+            <li><b id="st-printed">0</b>printed</li>
             <li><b id="st-orders">0</b>orders</li>
             <li><b id="st-done">0</b>picked up</li>
             <li><b id="st-unpaid">0</b>not paid</li>
             <li><b id="st-collected">$0</b>collected</li>
           </ul>
         </div>
+        <div class="sheetmeter">
+          <div class="minisheet" id="mini" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div>
+            <p class="sheet-text" id="sheet-text" role="status"></p>
+            <p class="note" id="sheet-held"></p>
+          </div>
+        </div>
         <div class="row">
-          <button class="btn primary" type="button" id="print-one">Make one sheet</button>
-          <button class="btn" type="button" id="print-all">Make sheets for everything waiting</button>
+          <button class="btn primary" type="button" id="print-one">Print full sheets</button>
+          <button class="btn" type="button" id="print-all">Print everything waiting</button>
         </div>
         <p class="note" id="print-msg" role="status"></p>
         <div class="card soft ready" id="ready" hidden>
@@ -265,7 +273,7 @@
   <ol class="poster-steps">
     <li><b>1</b><span>Scan the code</span></li>
     <li><b>2</b><span>Pick your photos</span></li>
-    <li><b>3</b><span>Ready in 10-15 minutes</span></li>
+    <li><b>3</b><span id="poster-step3">Ready in 10-15 minutes</span></li>
   </ol>
   <p class="poster-event" id="poster-event"></p>
   <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
