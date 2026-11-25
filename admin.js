@@ -317,7 +317,7 @@
   async function loadOrders() {
     var ev = state.event; if (!ev) return;
     var res = await sb.from('orders')
-      .select('id, order_no, guest_name, contact, note, status, created_at, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y)')
+      .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y)')
       .eq('event_id', ev.id).order('order_no', { ascending: true });
     if (!state.event || state.event.id !== ev.id) return;
     if (lostSession(res.error)) return;
@@ -391,6 +391,10 @@
     $('st-waiting').textContent = waiting;
     $('st-orders').textContent = state.orders.length;
     $('st-done').textContent = doneCount;
+    var unpaid = 0, collected = 0;
+    state.orders.forEach(function (o) { if (o.paid_at) collected += Number(o.paid_amount) || 0; else unpaid++; });
+    $('st-unpaid').textContent = unpaid;
+    $('st-collected').textContent = C.money(collected);
     $('print-one').disabled = !waiting; $('print-all').disabled = !waiting;
     if ($('ready').hidden) note('print-msg', waiting ? (waiting === 1 ? '1 magnet is' : waiting + ' magnets are') + ' waiting. A full sheet holds ' + per + '.' : 'Nothing is waiting to print.');
     var labels = { todo: 'To do (' + (state.orders.length - doneCount) + ')', done: 'Picked up (' + doneCount + ')', all: 'All (' + state.orders.length + ')' };
@@ -417,8 +421,9 @@
       head.appendChild(who);
       var meta = el('div', 'row');
       var count = o.order_photos.reduce(function (n, p) { return n + p.qty; }, 0);
-      var cost = C.priceFor(count);
+      var cost = o.paid_at && o.paid_amount != null ? Number(o.paid_amount) : C.priceFor(count);
       if (cost != null) meta.appendChild(el('strong', 'price', C.money(cost)));
+      meta.appendChild(el('span', 'chip ' + (o.paid_at ? 'paid' : 'unpaid'), o.paid_at ? 'Paid' : 'Not paid'));
       meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(o.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
       var label = o.status === 'new' ? 'Waiting to print' : o.status === 'printed' ? 'Printed' : 'Picked up';
       meta.appendChild(el('span', 'chip ' + o.status, label));
@@ -442,6 +447,11 @@
       li.appendChild(el('p', 'note', 'Tap a photo to fix how it is framed.'));
 
       var actions = el('div', 'row');
+      if (!o.paid_at) {
+        var pay = el('button', 'btn small primary', 'Mark paid' + (cost != null ? ' ' + C.money(cost) : '')); pay.type = 'button';
+        pay.addEventListener('click', function () { setOrder(o, { paid_at: new Date().toISOString(), paid_amount: cost }); });
+        actions.appendChild(pay);
+      }
       var printed = o.order_photos.some(function (p) { return p.printed_at; });
       var one = el('button', 'btn small' + (o.status === 'new' ? ' primary' : ''), printed ? 'Print this order again' : 'Print this order'); one.type = 'button';
       one.addEventListener('click', function () { makeSheets('order', o); });
@@ -465,6 +475,11 @@
           setOrder(o, { status: 'new' });
         });
         actions.appendChild(again);
+      }
+      if (o.paid_at) {
+        var unpay = el('button', 'btn small', 'Undo paid'); unpay.type = 'button';
+        unpay.addEventListener('click', function () { setOrder(o, { paid_at: null, paid_amount: null }); });
+        actions.appendChild(unpay);
       }
       li.appendChild(actions);
       ul.appendChild(li);

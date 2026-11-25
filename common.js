@@ -146,23 +146,24 @@
   }
 
   /* ---------- prices ---------- */
+  function tiers() { return (window.SONA.prices || []).slice().sort(function (a, b) { return a.qty - b.qty; }); }
+  /* The price of n magnets, or null when n is not a size that is sold. */
   function priceFor(n) {
-    var tiers = (window.SONA.prices || []).slice().sort(function (a, b) { return a.qty - b.qty; }), best = [0];
-    if (!tiers.length || tiers[0].qty !== 1) return null;
-    for (var i = 1; i <= n; i++) {
-      best[i] = Infinity;
-      tiers.forEach(function (t) { if (t.qty <= i && best[i - t.qty] + t.price < best[i]) best[i] = best[i - t.qty] + t.price; });
-    }
-    return best[n];
-  }
-  function money(v) { return v == null ? '' : '$' + (Math.round(v * 100) % 100 ? v.toFixed(2) : String(Math.round(v))); }
-  /* The next bigger order that costs the same or less, if there is one within the limit. */
-  function betterDeal(n, max) {
-    var now = priceFor(n);
-    if (now == null || n < 1) return null;
-    for (var m = n + 1; m <= max; m++) { var p = priceFor(m); if (p <= now) return { qty: m, price: p, cheaper: p < now }; }
+    var list = tiers(), top = list[list.length - 1], i, rest;
+    if (!list.length || n < 1) return null;
+    for (i = 0; i < list.length; i++) if (list[i].qty === n) return list[i].price;
+    if (n > top.qty) { rest = priceFor(n - top.qty); return rest == null ? null : top.price + rest; }
     return null;
   }
+  function money(v) { return v == null ? '' : '$' + (Math.round(v * 100) % 100 ? v.toFixed(2) : String(Math.round(v))); }
+  /* The nearest sizes that are sold, below and above n, within the event's limit. */
+  function nearestPacks(n, max) {
+    var down = null, up = null, m;
+    for (m = n - 1; m >= 1; m--) if (priceFor(m) != null) { down = m; break; }
+    for (m = n + 1; m <= max; m++) if (priceFor(m) != null) { up = m; break; }
+    return { down: down, up: up };
+  }
+  function packSizes(max) { return tiers().filter(function (t) { return t.qty <= max; }).map(function (t) { return t.qty; }); }
 
-  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, betterDeal: betterDeal, uuid: uuid, attachEditor: attachEditor };
+  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packSizes: packSizes, uuid: uuid, attachEditor: attachEditor };
 })();

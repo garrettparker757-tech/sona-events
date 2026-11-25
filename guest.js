@@ -85,14 +85,12 @@
       ? 'Each photo becomes one square magnet. Happy with them? Tap Next.'
       : 'Each photo becomes one square magnet. You can choose up to ' + max + '. Tap the yellow button to pick photos from your phone.';
     var cost = C.priceFor(n);
-    $('counter').textContent = plural(n, 'magnet') + (n && cost != null ? ': ' + C.money(cost) : '');
+    $('counter').textContent = plural(n, 'magnet') + (cost != null ? ': ' + C.money(cost) : '');
     var packs = (CFG.prices || []).filter(function (t) { return t.qty <= max; });
     $('price-list').textContent = packs.map(function (t) { return t.qty + ' for ' + C.money(t.price); }).join('  \u00b7  ');
-    var deal = n ? C.betterDeal(n, max) : null;
-    $('deal').hidden = !deal;
-    if (deal) $('deal').textContent = deal.cheaper
-      ? 'Tip: ' + deal.qty + ' magnets cost ' + C.money(deal.price) + ', which is less than ' + n + '. Add ' + plural(deal.qty - n, 'more photo') + ' to save.'
-      : 'Tip: ' + deal.qty + ' magnets cost the same as ' + n + ' (' + C.money(deal.price) + '). You can add ' + (deal.qty - n) + ' more at no extra cost.';
+    var hint = packHint(n, max);
+    $('deal').hidden = !hint;
+    $('deal').textContent = hint; $('deal').className = 'deal';
     var add = $('add-label');
     add.textContent = state.items.length ? 'Add another photo' : 'Choose photos';
     add.className = 'btn wide ' + (state.items.length ? '' : 'primary big');
@@ -100,6 +98,17 @@
     $('file-input').disabled = left <= 0;
     if (left <= 0 && state.items.length) add.textContent = 'That is the most for one order';
     $('photos-bar').hidden = !state.items.length;
+  }
+  /* Magnets are sold in packs. When the count is in between, say exactly what to do. */
+  function listSizes(sizes) {
+    return sizes.length < 2 ? sizes.join('') : sizes.slice(0, -1).join(', ') + ' or ' + sizes[sizes.length - 1];
+  }
+  function packHint(n, max) {
+    if (!n || C.priceFor(n) != null) return '';
+    var near = C.nearestPacks(n, max), ways = [];
+    if (near.up) ways.push('add ' + (near.up - n) + ' more for a pack of ' + near.up + ' (' + C.money(C.priceFor(near.up)) + ')');
+    if (near.down) ways.push('remove ' + (n - near.down) + ' for a pack of ' + near.down + ' (' + C.money(C.priceFor(near.down)) + ')');
+    return 'Magnets come in packs of ' + listSizes(C.packSizes(max)) + '. You have ' + n + ', so ' + ways.join(', or ') + '. You can use the same photo more than once with the + button.';
   }
   function note(id, text, kind) { var n = $(id); n.textContent = text || ''; n.className = 'note' + (kind ? ' ' + kind : ''); }
 
@@ -164,6 +173,12 @@
   /* ---------- step 2: name ---------- */
   function goName() {
     if (!state.items.length) return;
+    var hint = packHint(total(), state.event.max_magnets);
+    if (hint) {
+      $('deal').hidden = false; $('deal').textContent = hint; $('deal').className = 'deal stop';
+      try { $('deal').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (err) {}
+      return;
+    }
     note('form-msg', '');
     show('view-name', 'guest-name');
   }
@@ -173,7 +188,7 @@
     if (e) e.preventDefault();
     var name = $('guest-name').value.trim();
     if (!name) { note('form-msg', 'Please type your name so we know who to call.', 'bad'); $('guest-name').focus(); return; }
-    if (!state.items.length) { show('view-photos', 'photos-title'); return; }
+    if (!state.items.length || packHint(total(), state.event.max_magnets)) { show('view-photos', 'photos-title'); renderPhotos(); return; }
     var ul = $('proofs'), n = total(), cost = C.priceFor(n), ratio = CFG.crop.photo / CFG.crop.face;
     ul.replaceChildren();
     state.items.forEach(function (it, idx) {

@@ -88,6 +88,8 @@ label.check input { width: 22px; height: 22px; accent-color: var(--teal-deep); }
 .chip.draft { background: #ECEEF3; }
 .chip.live { background: var(--good-soft); }
 .chip.closed { background: var(--pink-soft); }
+.chip.paid { background: var(--good-soft); }
+.chip.unpaid { background: var(--pink); }
 
 .qty { display: inline-flex; align-items: center; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; background: var(--paper); }
 .qty button { border: 0; background: transparent; width: 42px; height: 40px; cursor: pointer; font-weight: 800; font-size: 1.15rem; }
@@ -200,7 +202,8 @@ textarea { resize: vertical; font-size: 1.1rem; }
 .price { font-family: var(--display); font-size: 1.1rem; }
 .pricelist { font-weight: 800; background: var(--sun-soft); border: 2px solid var(--ink); border-radius: 14px; padding: 8px 12px; text-align: center; }
 .pricelist:empty { display: none; }
-.deal { background: var(--good-soft); border: 2px solid var(--ink); border-radius: 14px; padding: 10px 14px; font-weight: 800; }
+.deal.stop { background: var(--sun); }
+.deal { background: var(--sun-soft); border: 2px solid var(--ink); border-radius: 14px; padding: 10px 14px; font-weight: 800; }
 .total { font-family: var(--display); font-weight: 600; font-size: 1.3rem; }
 .total:empty { display: none; }
 

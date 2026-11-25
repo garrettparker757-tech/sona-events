@@ -15,3 +15,4 @@
 --    To add staff: insert the email into public.staff first, then add the user in Supabase.
 --  * order_photos keeps how each photo is framed (crop_zoom, crop_x, crop_y). Guests send the whole
 --    photo, and staff can re-frame it from the staff page without the guest re-sending anything.
+--  * orders.paid_at / paid_amount record payment taken at the table (set from the staff page).
