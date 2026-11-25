@@ -42,13 +42,61 @@
   function lostSession(error) {
     if (!error) return false;
     var m = String(error.message || '') + ' ' + String(error.code || '');
-    if (error.status === 401 || /JWT|PGRST301|not authenticated|invalid.*token/i.test(m)) {
-      sb.auth.signOut().catch(function () {});
+    if (error.status === 401 || /JWT|PGRST301|PGRST303|not authenticated|invalid.*token/i.test(m)) {
+      /* A sign-in pass runs out every hour and is renewed quietly. Only when it truly cannot be renewed
+         is this device sent back to the sign-in form, and only this device. */
+      if (!auth.dead) return false;
+      sb.auth.signOut({ scope: 'local' }).catch(function () {});
       signedOut('You were signed out. Please sign in again.');
       return true;
     }
     return false;
   }
+  /* ---------- staying signed in ---------- */
+  var auth = { dead: false, renewing: null };
+  function renewPass() {
+    if (!auth.renewing) {
+      auth.renewing = sb.auth.refreshSession().then(function (r) {
+        auth.renewing = null;
+        var session = r && r.data && r.data.session;
+        if (session) { auth.dead = false; return session.access_token; }
+        var e = (r && r.error) || {}, offline = e.name === 'AuthRetryableFetchError' || e.status === 0 || e.status >= 500 || /fetch|network/i.test(String(e.message || ''));
+        if (!offline) auth.dead = true;
+        return null;
+      }, function () { auth.renewing = null; return null; });
+    }
+    return auth.renewing;
+  }
+  /* If the server says the pass has run out, renew it and send the same request again, so nobody notices. */
+  function staffFetch(input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    function again(res) {
+      return renewPass().then(function (token) {
+        if (!token) return res;
+        var headers = new Headers((init && init.headers) || {});
+        headers.set('Authorization', 'Bearer ' + token);
+        return fetch(input, Object.assign({}, init, { headers: headers }));
+      });
+    }
+    return fetch(input, init).then(function (res) {
+      if (!sb || /\/auth\/v1\//.test(url)) return res;
+      if (res.status === 401) return again(res);
+      if ((res.status === 400 || res.status === 403) && /\/storage\/v1\//.test(url)) {
+        return res.clone().text().then(function (t) { return /jwt|expired/i.test(t) ? again(res) : res; }, function () { return res; });
+      }
+      return res;
+    });
+  }
+  /* Renew a little early, and straight away when the phone wakes up or the tab comes back. */
+  function keepSignedIn() {
+    if (!sb || !$('view-login').hidden) return;
+    sb.auth.getSession().then(function (r) {
+      var session = r && r.data && r.data.session;
+      if (session && session.expires_at && session.expires_at * 1000 - Date.now() < 10 * 60 * 1000) renewPass();
+    }, function () {});
+  }
+  setInterval(keepSignedIn, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) keepSignedIn(); });
   async function route(session) {
     if (!session) { show('view-login'); return; }
     var res = await sb.from('staff').select('email').limit(1);
@@ -70,9 +118,10 @@
     if (res.error) { note('login-msg', 'That email and password did not match. Check them and try again.', 'bad'); return; }
     note('login-msg', '');
     $('login-password').value = '';
+    auth.dead = false;
     route(res.data.session);
   });
-  $('signout').addEventListener('click', async function () { await sb.auth.signOut(); signedOut(''); });
+  $('signout').addEventListener('click', async function () { stopPolling(); await sb.auth.signOut({ scope: 'local' }).catch(function () {}); signedOut(''); });
   $('back').addEventListener('click', async function () { discardPending(); state.event = null; await loadEvents(); show('view-events'); });
 
   /* ---------- deleting an event's photos and orders ---------- */
@@ -942,7 +991,7 @@
       label: function (r) { return '#' + r.order.order_no + ' ' + r.order.guest_name; }
     }, state.event.name + '  |  ' + stamp);
   }
-  var HINT_BEFORE = 'Opening the PDF marks these magnets as printed, so they will not print twice.';
+  var HINT_BEFORE = 'Opening or printing the PDF marks these magnets as printed, so they will not print twice.';
   var HINT_AFTER = 'Marked as printed. Print at 100% (Actual size). If the print fails, print again from the PDF tab, or use the buttons on the order.';
   function release(ids) {
     if (!ids || !ids.length) return Promise.resolve();
@@ -993,7 +1042,12 @@
         }
       }
       var out = await buildPdf(rows), url = URL.createObjectURL(out.blob);
-      state.pending = { rows: rows, url: url, marked: false, claimed: claimed, claimedAt: Date.now() };
+      state.pending = { rows: rows, url: url, marked: false, claimed: claimed, claimedAt: Date.now(), file: pdfFile(out.blob) };
+      /* From the home screen app the phone's own share sheet is the dependable way to reach Print. */
+      var shareable = canSharePdf(state.pending.file);
+      $('ready-share').hidden = !shareable;
+      $('ready-open').className = 'btn' + (shareable && asApp() ? ' small' : ' primary');
+      $('ready-share').className = 'btn' + (asApp() ? ' primary' : ' small');
       $('ready-text').textContent = 'Ready: ' + (mode === 'order' ? 'order #' + order.order_no + ' for ' + order.guest_name + ', ' : '') +
         plural(out.magnets, 'magnet') + ' on ' + plural(out.sheets, 'sheet') + '.' + (shared ? ' Another device took the rest for its own sheet.' : '');
       $('ready-open').href = url; $('ready-open').textContent = 'Open PDF to print';
@@ -1038,6 +1092,19 @@
   $('print-one').addEventListener('click', function () { makeSheets('full'); });
   $('print-all').addEventListener('click', function () { makeSheets('all'); });
   /* The links open or save the PDF by themselves; marking happens alongside. */
+  function pdfFile(blob) {
+    try { return new File([blob], 'sona-magnets-sheets.pdf', { type: 'application/pdf' }); } catch (err) { return null; }
+  }
+  function canSharePdf(file) {
+    try { return !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (err) { return false; }
+  }
+  function asApp() {
+    try { return navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches; } catch (err) { return false; }
+  }
+  $('ready-share').addEventListener('click', function () {
+    var pend = state.pending; if (!pend || !pend.file) return;
+    navigator.share({ files: [pend.file], title: 'Sona Magnets sheets' }).then(function () { markPending(); }, function () {});
+  });
   $('ready-open').addEventListener('click', function () { markPending(); });
   $('ready-save').addEventListener('click', function () { markPending(); });
   $('ready-mark').addEventListener('click', function () { markPending(); });
@@ -1046,7 +1113,10 @@
 
   /* ---------- start ---------- */
   if (!window.supabase) { show('view-login'); note('login-msg', 'The page did not finish loading. Check the connection and reload.', 'bad'); return; }
-  sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+  sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+    global: { fetch: staffFetch }
+  });
   sb.auth.onAuthStateChange(function (event) { if (event === 'SIGNED_OUT' && $('view-login').hidden) signedOut('You were signed out. Please sign in again.'); });
   sb.auth.getSession().then(function (r) { route(r.data.session); }).catch(function () { show('view-login'); });
 })();
