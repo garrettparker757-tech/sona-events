@@ -44,18 +44,28 @@
       <h2>New event</h2>
       <form class="stack" id="event-form" novalidate>
         <label for="ev-name">Event name<input id="ev-name" type="text" maxlength="80" placeholder="South of the James Market"></label>
-        <label for="ev-max">Magnets allowed per order<input id="ev-max" type="number" min="1" max="50" value="6"></label>
+        <label for="ev-max">Magnets allowed per order<input id="ev-max" type="number" min="1" max="50" value="9"></label>
         <label for="ev-welcome">Welcome line (optional)<input id="ev-welcome" type="text" maxlength="300" placeholder="Made in 10-15 minutes while you shop around."></label>
         <label class="check" for="ev-contact"><input id="ev-contact" type="checkbox">Ask guests for a phone or email</label>
         <button class="btn primary" type="submit" id="event-btn">Create event</button>
         <p class="note" id="event-msg" role="alert"></p>
       </form>
     </section>
-    <section class="card">
-      <h2>Your events</h2>
-      <ul class="events" id="events"></ul>
-      <p class="note" id="events-msg" role="status"></p>
-    </section>
+    <div class="stack">
+      <section class="card">
+        <h2>Your events</h2>
+        <ul class="events" id="events"></ul>
+        <p class="note" id="events-msg" role="status"></p>
+      </section>
+      <section class="card">
+        <h2>Table signs</h2>
+        <p class="note">Each prints on one Letter page. The QR sign for an event is inside that event.</p>
+        <div class="row">
+          <button class="btn small" type="button" data-print="how">Print "How it works" sign</button>
+          <button class="btn small" type="button" data-print="prices">Print price sign</button>
+        </div>
+      </section>
+    </div>
   </div>
 
   <div class="grid2" id="view-event" hidden>
@@ -80,7 +90,9 @@
       <div class="row">
         <button class="btn small" type="button" id="copy-link">Copy link</button>
         <a class="btn small" id="open-link" target="_blank" rel="noopener">Open guest page</a>
-        <button class="btn small" type="button" id="print-sign">Print sign</button>
+        <button class="btn small primary" type="button" data-print="qr-sign">Print QR sign</button>
+        <button class="btn small" type="button" data-print="how">Print "How it works" sign</button>
+        <button class="btn small" type="button" data-print="prices">Print price sign</button>
       </div>
       <p class="note">Customer's phone not cooperating? Use Open guest page and place the order for them on this device.</p>
 
@@ -204,18 +216,44 @@
   </div>
 </div>
 
-<section id="poster" aria-hidden="true">
+<!-- Printed signs. Only the one chosen with a Print button shows on paper. -->
+<section class="poster" id="poster-qr-sign" aria-hidden="true">
   <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
   <img class="poster-logo" src="/logo.png" alt="">
   <p class="poster-title">Scan me for photo magnets!</p>
   <p class="poster-sub">Made in 10-15 minutes while you shop around.</p>
   <div class="poster-qr" id="poster-qr"></div>
   <ol class="poster-steps">
-    <li><b>1</b>Scan the code</li>
-    <li><b>2</b>Pick your photos</li>
-    <li><b>3</b>Ready in 10-15 minutes</li>
+    <li><b>1</b><span>Scan the code</span></li>
+    <li><b>2</b><span>Pick your photos</span></li>
+    <li><b>3</b><span>Ready in 10-15 minutes</span></li>
   </ol>
   <p class="poster-event" id="poster-event"></p>
+  <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
+</section>
+
+<section class="poster" id="poster-how" aria-hidden="true">
+  <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
+  <img class="poster-logo" src="/logo.png" alt="">
+  <p class="poster-title">Your photos, made into magnets</p>
+  <p class="poster-sub">Made right here in 10-15 minutes.</p>
+  <ol class="poster-rows">
+    <li><b>1</b><div><strong>Scan our code</strong><span>Point your phone camera at the QR code on our table.</span></div></li>
+    <li><b>2</b><div><strong>Pick your photos</strong><span>Each photo becomes a 2 inch square magnet.</span></div></li>
+    <li><b>3</b><div><strong>Pay at the table</strong><span>Tell us your name or order number.</span></div></li>
+    <li><b>4</b><div><strong>Pick up your magnets</strong><span>Shop around and come back in 10-15 minutes.</span></div></li>
+  </ol>
+  <p class="poster-event">No smartphone? We can help you order.</p>
+  <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
+</section>
+
+<section class="poster" id="poster-prices" aria-hidden="true">
+  <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
+  <img class="poster-logo" src="/logo.png" alt="">
+  <p class="poster-title">Custom photo magnets</p>
+  <p class="poster-sub">Your own photos on 2 inch magnets. Made in 10-15 minutes while you shop around.</p>
+  <ul class="poster-prices" id="poster-price-list"></ul>
+  <p class="poster-event">Mix and match any photos</p>
   <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
 </section>
 

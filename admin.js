@@ -229,7 +229,22 @@
     catch (err) { this.textContent = 'Copy failed'; }
     var b = this; setTimeout(function () { b.textContent = 'Copy link'; }, 1500);
   });
-  $('print-sign').addEventListener('click', function () { window.print(); });
+  /* Table signs: pick which poster shows on paper, then print. */
+  (function () {
+    var list = $('poster-price-list'), tiers = (CFG.prices || []).slice().sort(function (a, b) { return a.qty - b.qty; });
+    var best = tiers.reduce(function (m, t) { return !m || t.price / t.qty < m.price / m.qty ? t : m; }, null);
+    tiers.forEach(function (t) {
+      var li = el('li', t === best && tiers.length > 1 ? 'best' : '');
+      li.appendChild(el('b', null, String(t.qty)));
+      li.appendChild(el('span', null, t.qty === 1 ? 'magnet' : 'magnets'));
+      li.appendChild(el('strong', null, C.money(t.price)));
+      if (t === best && tiers.length > 1) li.appendChild(el('em', null, 'Best value'));
+      list.appendChild(li);
+    });
+  })();
+  Array.prototype.forEach.call(document.querySelectorAll('[data-print]'), function (b) {
+    b.addEventListener('click', function () { document.body.setAttribute('data-print', b.getAttribute('data-print')); window.print(); });
+  });
   $('settings-form').addEventListener('submit', async function (e) {
     e.preventDefault();
     var ev = state.event; if (!ev) return;
@@ -402,6 +417,8 @@
       head.appendChild(who);
       var meta = el('div', 'row');
       var count = o.order_photos.reduce(function (n, p) { return n + p.qty; }, 0);
+      var cost = C.priceFor(count);
+      if (cost != null) meta.appendChild(el('strong', 'price', C.money(cost)));
       meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(o.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
       var label = o.status === 'new' ? 'Waiting to print' : o.status === 'printed' ? 'Printed' : 'Picked up';
       meta.appendChild(el('span', 'chip ' + o.status, label));

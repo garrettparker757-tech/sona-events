@@ -145,5 +145,24 @@
     return { draw: draw };
   }
 
-  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, uuid: uuid, attachEditor: attachEditor };
+  /* ---------- prices ---------- */
+  function priceFor(n) {
+    var tiers = (window.SONA.prices || []).slice().sort(function (a, b) { return a.qty - b.qty; }), best = [0];
+    if (!tiers.length || tiers[0].qty !== 1) return null;
+    for (var i = 1; i <= n; i++) {
+      best[i] = Infinity;
+      tiers.forEach(function (t) { if (t.qty <= i && best[i - t.qty] + t.price < best[i]) best[i] = best[i - t.qty] + t.price; });
+    }
+    return best[n];
+  }
+  function money(v) { return v == null ? '' : '$' + (Math.round(v * 100) % 100 ? v.toFixed(2) : String(Math.round(v))); }
+  /* The next bigger order that costs the same or less, if there is one within the limit. */
+  function betterDeal(n, max) {
+    var now = priceFor(n);
+    if (now == null || n < 1) return null;
+    for (var m = n + 1; m <= max; m++) { var p = priceFor(m); if (p <= now) return { qty: m, price: p, cheaper: p < now }; }
+    return null;
+  }
+
+  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, betterDeal: betterDeal, uuid: uuid, attachEditor: attachEditor };
 })();

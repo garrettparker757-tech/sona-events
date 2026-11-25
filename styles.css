@@ -185,39 +185,64 @@ button.thumb:hover { box-shadow: 0 0 0 3px var(--pink); }
 .danger { background: var(--pink-soft); border-color: var(--ink); }
 .guest-note { background: var(--pink-soft); border: 2px solid var(--ink); border-radius: 12px; padding: 6px 12px; font-weight: 700; }
 textarea { resize: vertical; font-size: 1.1rem; }
-#poster { display: none; }
+.poster { display: none; }
+.price { font-family: var(--display); font-size: 1.1rem; }
+.pricelist { font-weight: 800; background: var(--sun-soft); border: 2px solid var(--ink); border-radius: 14px; padding: 8px 12px; text-align: center; }
+.pricelist:empty { display: none; }
+.deal { background: var(--good-soft); border: 2px solid var(--ink); border-radius: 14px; padding: 10px 14px; font-weight: 800; }
+.total { font-family: var(--display); font-weight: 600; font-size: 1.3rem; }
+.total:empty { display: none; }
 
-/* ---------- printed QR sign (Print sign button) ---------- */
+/* ---------- printed table signs: each is exactly one Letter page ---------- */
 @page { size: letter portrait; margin: 0.5in 0.4in; }
 @media print {
   html, body { background: #fff !important; background-image: none !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
-  body > *:not(#poster) { display: none !important; }
-  #poster {
+  body > *:not(.poster) { display: none !important; }
+  body[data-print="qr-sign"] > #poster-qr-sign, body[data-print="how"] > #poster-how, body[data-print="prices"] > #poster-prices, body:not([data-print]) > #poster-qr-sign {
     display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center;
     position: relative; overflow: hidden; height: 9.2in; max-height: 9.2in; padding: 0.3in 0.5in 0.28in; margin: 0 auto;
     page-break-inside: avoid; break-inside: avoid; page-break-before: avoid; page-break-after: avoid; break-after: avoid;
     border: 6pt solid var(--ink); border-radius: 0.5in; background: var(--page);
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  #poster > * { position: relative; }
-  .poster-logo { width: 1.9in; height: 1.9in; display: block; }
+  .poster > * { position: relative; }
+  .poster-logo { width: 1.7in; height: 1.7in; display: block; }
+  #poster-how .poster-logo { width: 1.4in; height: 1.4in; }
+  #poster-how .poster-title { font-size: 31pt; }
   .poster-title { font-family: var(--display); font-weight: 700; font-size: 34pt; line-height: 1.05; max-width: 6.6in; }
-  .poster-sub { font-size: 16pt; font-weight: 700; color: var(--ink-soft); max-width: 5.6in; }
-  .poster-qr { background: #fff; border: 5pt solid var(--ink); border-radius: 0.4in; padding: 0.22in; box-shadow: 0.14in 0.14in 0 var(--pink); }
-  .poster-qr img, .poster-qr canvas { display: block; width: 2.8in; height: 2.8in; }
-  .poster-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.08in 0.1in; justify-content: center; }
-  .poster-steps li { display: flex; align-items: center; gap: 0.09in; background: #fff; border: 3pt solid var(--ink); border-radius: 999px; padding: 0.05in 0.14in 0.05in 0.06in; font-family: var(--display); font-weight: 600; font-size: 11.5pt; white-space: nowrap; }
-  .poster-steps b { width: 0.32in; height: 0.32in; border-radius: 50%; background: var(--sun); border: 2.5pt solid var(--ink); display: grid; place-items: center; font-size: 13pt; }
+  .poster-sub { font-size: 16pt; font-weight: 700; color: var(--ink-soft); max-width: 6in; }
+  .poster-qr { background: #fff; border: 5pt solid var(--ink); border-radius: 0.4in; padding: 0.2in; box-shadow: 0.14in 0.14in 0 var(--pink); }
+  .poster-qr img, .poster-qr canvas { display: block; width: 2.55in; height: 2.55in; }
+  .poster-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.14in; width: 100%; }
+  .poster-steps li { display: flex; flex-direction: column; align-items: center; gap: 0.06in; background: #fff; border: 3pt solid var(--ink); border-radius: 0.22in; padding: 0.1in 0.08in 0.12in; font-family: var(--display); font-weight: 600; font-size: 16pt; line-height: 1.1; }
+  .poster-steps b { width: 0.5in; height: 0.5in; border-radius: 50%; background: var(--sun); border: 3pt solid var(--ink); display: grid; place-items: center; font-size: 20pt; }
   .poster-event { font-family: var(--display); font-weight: 600; font-size: 17pt; background: var(--teal-soft); border: 3pt solid var(--ink); border-radius: 999px; padding: 0.05in 0.3in; }
   .poster-event:empty { display: none; }
   .poster-foot { font-weight: 800; font-size: 11pt; letter-spacing: 0.04em; color: var(--ink-soft); }
-  #poster > .dot { position: absolute; border-radius: 50%; display: block; }
+
+  .poster-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.11in; width: 100%; text-align: left; }
+  .poster-rows li { display: flex; align-items: center; gap: 0.2in; background: #fff; border: 3pt solid var(--ink); border-radius: 0.25in; padding: 0.08in 0.22in; }
+  .poster-rows b { flex: none; width: 0.58in; height: 0.58in; border-radius: 50%; background: var(--sun); border: 3pt solid var(--ink); display: grid; place-items: center; font-family: var(--display); font-size: 26pt; }
+  .poster-rows li:nth-child(even) b { background: var(--pink); }
+  .poster-rows strong { display: block; font-family: var(--display); font-weight: 600; font-size: 21pt; line-height: 1.1; }
+  .poster-rows span { display: block; font-size: 12.5pt; font-weight: 700; color: var(--ink-soft); }
+
+  .poster-prices { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.2in; width: 100%; }
+  .poster-prices li { position: relative; display: flex; flex-direction: column; align-items: center; background: #fff; border: 4pt solid var(--ink); border-radius: 0.3in; padding: 0.14in 0.1in 0.12in; box-shadow: 0.09in 0.09in 0 var(--teal); }
+  .poster-prices li.best { background: var(--sun-soft); box-shadow: 0.09in 0.09in 0 var(--pink); }
+  .poster-prices b { font-family: var(--display); font-weight: 700; font-size: 46pt; line-height: 1; }
+  .poster-prices span { font-family: var(--display); font-weight: 600; font-size: 15pt; }
+  .poster-prices strong { font-family: var(--display); font-weight: 700; font-size: 34pt; line-height: 1.1; background: var(--sun); border: 3pt solid var(--ink); border-radius: 999px; padding: 0 0.26in; margin-top: 0.06in; }
+  .poster-prices li.best strong { background: var(--pink); }
+  .poster-prices em { position: absolute; top: -0.13in; right: 0.14in; font-style: normal; font-family: var(--display); font-weight: 600; font-size: 11pt; background: var(--ink); color: #fff; border-radius: 999px; padding: 0.02in 0.14in; }
+
+  .poster > .dot { position: absolute; border-radius: 50%; display: block; }
   .d1 { width: 0.5in; height: 0.5in; background: var(--pink); left: 0.5in; top: 0.7in; }
   .d2 { width: 0.26in; height: 0.26in; background: var(--sun); left: 1.25in; top: 0.4in; }
   .d3 { width: 0.38in; height: 0.38in; background: var(--teal); right: 0.6in; top: 0.5in; }
   .d4 { width: 0.22in; height: 0.22in; background: var(--pink); right: 1.3in; top: 1.15in; }
-  .d5 { width: 0.44in; height: 0.44in; background: var(--sun); left: 0.55in; top: 4.9in; }
-  .d6 { width: 0.24in; height: 0.24in; background: var(--teal); left: 0.95in; top: 5.7in; }
-  .d7 { width: 0.5in; height: 0.5in; background: var(--teal); right: 0.5in; top: 5.2in; }
-  .d8 { width: 0.26in; height: 0.26in; background: var(--pink); right: 1.0in; top: 4.5in; }
+  .d5 { width: 0.34in; height: 0.34in; background: var(--sun); left: 0.4in; bottom: 0.3in; }
+  .d6 { width: 0.2in; height: 0.2in; background: var(--teal); left: 0.95in; bottom: 0.62in; }
+  .d7 { width: 0.36in; height: 0.36in; background: var(--teal); right: 0.4in; bottom: 0.34in; }
+  .d8 { width: 0.2in; height: 0.2in; background: var(--pink); right: 1.0in; bottom: 0.66in; }
 }

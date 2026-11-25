@@ -84,7 +84,15 @@
     $('photo-help').textContent = state.items.length
       ? 'Each photo becomes one square magnet. Happy with them? Tap Next.'
       : 'Each photo becomes one square magnet. You can choose up to ' + max + '. Tap the yellow button to pick photos from your phone.';
-    $('counter').textContent = plural(n, 'magnet') + ' of ' + max;
+    var cost = C.priceFor(n);
+    $('counter').textContent = plural(n, 'magnet') + (n && cost != null ? ': ' + C.money(cost) : '');
+    var packs = (CFG.prices || []).filter(function (t) { return t.qty <= max; });
+    $('price-list').textContent = packs.map(function (t) { return t.qty + ' for ' + C.money(t.price); }).join('  \u00b7  ');
+    var deal = n ? C.betterDeal(n, max) : null;
+    $('deal').hidden = !deal;
+    if (deal) $('deal').textContent = deal.cheaper
+      ? 'Tip: ' + deal.qty + ' magnets cost ' + C.money(deal.price) + ', which is less than ' + n + '. Add ' + plural(deal.qty - n, 'more photo') + ' to save.'
+      : 'Tip: ' + deal.qty + ' magnets cost the same as ' + n + ' (' + C.money(deal.price) + '). You can add ' + (deal.qty - n) + ' more at no extra cost.';
     var add = $('add-label');
     add.textContent = state.items.length ? 'Add another photo' : 'Choose photos';
     add.className = 'btn wide ' + (state.items.length ? '' : 'primary big');
@@ -147,7 +155,8 @@
   function goName() {
     if (!state.items.length) return;
     var n = total();
-    $('summary').textContent = 'You are ordering ' + plural(n, 'magnet') + '.';
+    var cost = C.priceFor(n);
+    $('summary').textContent = 'You are ordering ' + plural(n, 'magnet') + '.' + (cost != null ? ' Your total is ' + C.money(cost) + ', paid at the table.' : '');
     note('form-msg', '');
     show('view-name', 'guest-name');
   }
@@ -225,6 +234,8 @@
       var count = total();
       $('done-hello').textContent = 'You are all set, ' + name + '!';
       $('done-no').textContent = res.data;
+      var cost = C.priceFor(count);
+      $('done-total').textContent = cost != null ? 'Your total is ' + C.money(cost) + '. Please pay at the table.' : '';
       $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. They will be ready in 10-15 minutes, so feel free to shop around. Then come back to the table and tell us your name or order number.';
       try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, at: Date.now() })); } catch (err) {}
       state.items = []; state.orderId = null;

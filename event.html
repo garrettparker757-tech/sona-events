@@ -34,6 +34,7 @@
       <p class="stepline">Step 1 of 2</p>
       <h2 id="photos-title" tabindex="-1">Choose your photos</h2>
       <p id="photo-help"></p>
+      <p class="pricelist" id="price-list"></p>
       <ul class="tiles" id="photos"></ul>
       <label class="btn primary wide big" for="file-input" id="add-label">Choose photos</label>
       <input class="visually-hidden" type="file" id="file-input" accept="image/*" multiple>
@@ -43,6 +44,7 @@
       <p class="count" id="counter"></p>
       <button class="btn primary big" type="button" id="to-name">Next</button>
     </div>
+    <p class="deal" id="deal" hidden></p>
   </section>
 
   <!-- Step 2: name and send -->
@@ -71,6 +73,7 @@
     <p class="eyebrow" id="done-hello">You are all set!</p>
     <p class="sub">Your order number is</p>
     <p class="order-no" id="done-no"></p>
+    <p class="total" id="done-total"></p>
     <p id="done-text"></p>
     <button class="btn" type="button" id="again">Order more magnets</button>
   </section>
