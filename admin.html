@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sona Events staff</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="desk">
+  <header class="topbar">
+    <div>
+      <p class="wordmark">Sona Magnets</p>
+      <h1 id="page-title">Events</h1>
+    </div>
+    <div class="row">
+      <button class="btn small" type="button" id="back" hidden>All events</button>
+      <button class="btn small" type="button" id="signout" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <section class="card narrow" id="view-loading"><p>Checking your sign-in.</p></section>
+
+  <section class="card narrow" id="view-login" hidden>
+    <h2>Staff sign-in</h2>
+    <form class="stack" id="login-form" novalidate>
+      <label for="login-email">Email<input id="login-email" type="email" autocomplete="username"></label>
+      <label for="login-password">Password<input id="login-password" type="password" autocomplete="current-password"></label>
+      <button class="btn primary" type="submit" id="login-btn">Sign in</button>
+      <p class="note" id="login-msg" role="alert"></p>
+    </form>
+  </section>
+
+  <section class="card narrow" id="view-denied" hidden>
+    <h2>This account is not on the staff list</h2>
+    <p id="denied-msg"></p>
+  </section>
+
+  <div class="grid2" id="view-events" hidden>
+    <section class="card">
+      <h2>New event</h2>
+      <form class="stack" id="event-form" novalidate>
+        <label for="ev-name">Event name<input id="ev-name" type="text" maxlength="80" placeholder="South of the James Market"></label>
+        <label for="ev-max">Magnets allowed per order<input id="ev-max" type="number" min="1" max="50" value="6"></label>
+        <label for="ev-welcome">Welcome line (optional)<input id="ev-welcome" type="text" maxlength="300" placeholder="Pick your favourite photos and we will press them while you wait."></label>
+        <label class="check" for="ev-contact"><input id="ev-contact" type="checkbox">Ask guests for a phone or email</label>
+        <button class="btn primary" type="submit" id="event-btn">Create event</button>
+        <p class="note" id="event-msg" role="alert"></p>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Your events</h2>
+      <ul class="events" id="events"></ul>
+      <p class="note" id="events-msg" role="status"></p>
+    </section>
+  </div>
+
+  <div class="grid2" id="view-event" hidden>
+    <section class="card sign">
+      <p class="sign-title">Scan to order your photo magnets</p>
+      <div class="row between">
+        <h2>Guest QR code</h2>
+        <span class="chip" id="status-chip"></span>
+      </div>
+      <div class="seg" role="group" aria-label="Event status">
+        <button type="button" data-status="draft" aria-pressed="false">Draft</button>
+        <button type="button" data-status="live" aria-pressed="false">Live</button>
+        <button type="button" data-status="closed" aria-pressed="false">Closed</button>
+      </div>
+      <p class="note" id="status-note" role="status"></p>
+      <div class="qr" id="qr"></div>
+      <p class="sign-name" id="sign-name"></p>
+      <p class="link" id="guest-link"></p>
+      <div class="row">
+        <button class="btn small" type="button" id="copy-link">Copy link</button>
+        <a class="btn small" id="open-link" target="_blank" rel="noopener">Open guest page</a>
+        <button class="btn small" type="button" id="print-sign">Print sign</button>
+      </div>
+    </section>
+
+    <div class="stack">
+      <section class="card">
+        <div class="row between">
+          <h2>Print</h2>
+          <ul class="stats" aria-live="polite">
+            <li><b id="st-waiting">0</b>magnets waiting</li>
+            <li><b id="st-orders">0</b>orders</li>
+            <li><b id="st-done">0</b>picked up</li>
+          </ul>
+        </div>
+        <div class="row">
+          <button class="btn primary" type="button" id="print-one">Make one sheet</button>
+          <button class="btn" type="button" id="print-all">Make sheets for everything waiting</button>
+        </div>
+        <p class="note" id="print-msg" role="status"></p>
+        <div class="card ready" id="ready" hidden>
+          <p id="ready-text"></p>
+          <div class="row">
+            <a class="btn primary" id="ready-open" target="_blank" rel="noopener">Open PDF to print</a>
+            <a class="btn small" id="ready-save">Save PDF</a>
+          </div>
+          <p class="sub">Print at 100% (Actual size) on Letter glossy photo paper, the same way you print the Canva template. Once the sheets are out of the printer:</p>
+          <div class="row">
+            <button class="btn" type="button" id="ready-mark">Mark these as printed</button>
+            <button class="btn small" type="button" id="ready-discard">Discard, I will print later</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="row between">
+          <h2>Orders</h2>
+          <p class="note" id="queue-msg" role="status"></p>
+        </div>
+        <ul class="orders" id="orders"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/config.js"></script>
+<script src="/common.js"></script>
+<script src="/sheet.js"></script>
+<script src="/admin.js"></script>
+</body>
+</html>

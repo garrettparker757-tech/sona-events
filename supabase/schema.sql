@@ -1,0 +1,9 @@
+-- Reference copy of the Sona Events database (applied to Supabase as migration "sona_events_initial_schema").
+-- Tables: staff (allowlist), events, orders, order_photos. Storage bucket: uploads (private, JPEG only, 3 MB limit).
+-- Guests never touch the tables directly: they call get_event() and submit_order().
+-- Staff access is granted by is_staff(): a signed-in, email-confirmed user whose email is in public.staff.
+--
+-- To add a staff member:   insert into public.staff (email) values ('name@example.com');
+-- To remove one:           delete from public.staff where email = 'name@example.com';
+--
+-- The full definitions live in the Supabase project under Database > Migrations.
