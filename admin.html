@@ -69,6 +69,10 @@
         <button type="button" data-status="live" aria-pressed="false">Live</button>
         <button type="button" data-status="closed" aria-pressed="false">Closed</button>
       </div>
+      <div class="card soft alert" id="not-live" hidden>
+        <p id="not-live-text"></p>
+        <button class="btn primary" type="button" id="go-live">Go live now</button>
+      </div>
       <p class="note" id="status-note" role="status"></p>
       <div class="qr" id="qr"></div>
       <p class="sign-name" id="sign-name"></p>
@@ -78,19 +82,38 @@
         <a class="btn small" id="open-link" target="_blank" rel="noopener">Open guest page</a>
         <button class="btn small" type="button" id="print-sign">Print sign</button>
       </div>
-      <div class="after">
-        <h3>After the event</h3>
-        <p class="note">Remove every guest photo and order from this event. The event itself stays in your list, closed.</p>
-        <button class="btn small" type="button" id="purge-open">Delete photos and orders</button>
-        <div class="card soft danger" id="purge-confirm" hidden>
-          <p id="purge-text"></p>
+      <p class="note">Customer's phone not cooperating? Use Open guest page and place the order for them on this device.</p>
+
+      <details class="fold">
+        <summary>Event settings</summary>
+        <form class="stack" id="settings-form" novalidate>
+          <label for="set-name">Event name<input id="set-name" type="text" maxlength="80"></label>
+          <label for="set-max">Magnets allowed per order<input id="set-max" type="number" min="1" max="50"></label>
+          <label for="set-welcome">Welcome line (optional)<input id="set-welcome" type="text" maxlength="300"></label>
+          <label class="check" for="set-contact"><input id="set-contact" type="checkbox">Ask guests for a phone or email</label>
+          <button class="btn small" type="submit" id="settings-btn">Save settings</button>
+          <p class="note" id="settings-msg" role="status"></p>
+        </form>
+      </details>
+
+      <details class="fold">
+        <summary>After the event</summary>
+        <div class="stack">
+          <p class="note">Delete photos and orders keeps the event in your list, closed. Remove this event takes it off the list as well.</p>
           <div class="row">
-            <button class="btn small" type="button" id="purge-yes">Yes, delete them for good</button>
-            <button class="btn small" type="button" id="purge-no">Keep them</button>
+            <button class="btn small" type="button" id="purge-open">Delete photos and orders</button>
+            <button class="btn small" type="button" id="remove-open">Remove this event</button>
           </div>
+          <div class="card soft danger" id="purge-confirm" hidden>
+            <p id="purge-text"></p>
+            <div class="row">
+              <button class="btn small" type="button" id="purge-yes">Yes, delete for good</button>
+              <button class="btn small" type="button" id="purge-no">Keep everything</button>
+            </div>
+          </div>
+          <p class="note" id="purge-msg" role="status"></p>
         </div>
-        <p class="note" id="purge-msg" role="status"></p>
-      </div>
+      </details>
     </section>
 
     <div class="stack">
@@ -113,21 +136,49 @@
           <div class="row">
             <a class="btn primary" id="ready-open" target="_blank" rel="noopener">Open PDF to print</a>
             <a class="btn small" id="ready-save">Save PDF</a>
+            <button class="btn small" type="button" id="ready-discard">Cancel</button>
           </div>
-          <p class="sub">Print at 100% (Actual size) on Letter glossy photo paper, the same way you print the Canva template. Once the sheets are out of the printer:</p>
+          <p class="sub" id="ready-hint"></p>
           <div class="row">
-            <button class="btn" type="button" id="ready-mark">Mark these as printed</button>
-            <button class="btn small" type="button" id="ready-discard">Discard, I will print later</button>
+            <button class="btn small" type="button" id="ready-mark" hidden>Mark these as printed</button>
+            <button class="btn small" type="button" id="ready-done" hidden>Done</button>
           </div>
         </div>
+        <details class="fold">
+          <summary>Printing checklist</summary>
+          <ol class="checklist">
+            <li>Letter glossy photo paper, with the printer's paper type set to glossy photo.</li>
+            <li>Scale 100% or Actual size. Turn off Fit to page.</li>
+            <li>Print the same way you print the Canva template. If you use borderless, check the next step carefully, because borderless can stretch the picture.</li>
+            <li>The line at the bottom of every sheet should measure exactly 2 inches.</li>
+          </ol>
+        </details>
       </section>
 
       <section class="card">
         <div class="row between">
           <h2>Orders</h2>
-          <p class="note" id="queue-msg" role="status"></p>
+          <div class="row">
+            <button class="btn small" type="button" id="sound-toggle" aria-pressed="false">Sound for new orders: off</button>
+            <p class="note" id="queue-msg" role="status"></p>
+          </div>
+        </div>
+        <div class="card soft newbar" id="new-bar" hidden>
+          <p id="new-text" role="status"></p>
+          <button class="btn small" type="button" id="new-ok">Got it</button>
+        </div>
+        <div class="row between">
+          <div class="seg small" role="group" aria-label="Which orders to show">
+            <button type="button" data-filter="todo" aria-pressed="true">To do</button>
+            <button type="button" data-filter="done" aria-pressed="false">Picked up</button>
+            <button type="button" data-filter="all" aria-pressed="false">All</button>
+          </div>
+          <label class="search" for="order-search"><span class="visually-hidden">Find an order</span>
+            <input id="order-search" type="text" placeholder="Find by name or number" autocomplete="off">
+          </label>
         </div>
         <ul class="orders" id="orders"></ul>
+        <p class="note" id="orders-empty"></p>
       </section>
     </div>
   </div>

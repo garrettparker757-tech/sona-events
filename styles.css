@@ -169,7 +169,17 @@ body.guest .qty output { min-width: 34px; font-size: 1.25rem; }
 .thumb span { position: absolute; right: 2px; bottom: 2px; background: var(--ink); color: #fff; font-size: 0.72rem; font-weight: 800; border-radius: 999px; padding: 0 6px; }
 .thumb.printed { opacity: 0.55; }
 .ready { background: var(--sun-soft); }
-.after { border-top: 2px dashed var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.fold { border-top: 2px dashed var(--line); padding-top: 10px; }
+.fold summary { cursor: pointer; font-family: var(--display); font-weight: 600; padding: 4px 0; }
+.fold[open] summary { margin-bottom: 10px; }
+.checklist { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; }
+.alert { background: var(--sun-soft); border-color: var(--ink); }
+.newbar { background: var(--good-soft); border-color: var(--ink); flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; font-weight: 800; }
+.seg.small button { padding: 5px 13px; font-size: 0.92rem; }
+.search { flex: 1 1 200px; max-width: 320px; }
+.search input { padding: 8px 14px; border-radius: 999px; }
+.events li .confirm { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; background: var(--pink-soft); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 12px; }
+.order.fresh { box-shadow: 0 0 0 4px var(--good-soft), 0 0 0 6px var(--good); }
 .danger { background: var(--pink-soft); border-color: var(--ink); }
 .guest-note { background: var(--pink-soft); border: 2px solid var(--ink); border-radius: 12px; padding: 6px 12px; font-weight: 700; }
 textarea { resize: vertical; font-size: 1.1rem; }
