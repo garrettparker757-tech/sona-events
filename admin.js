@@ -102,6 +102,9 @@
     var qr = $('qr'); qr.replaceChildren();
     if (window.QRCode) new window.QRCode(qr, { text: url, width: 440, height: 440, correctLevel: window.QRCode.CorrectLevel.M });
     else qr.textContent = 'The QR code could not load. Reload the page.';
+    var pq = $('poster-qr'); pq.replaceChildren();
+    if (window.QRCode) new window.QRCode(pq, { text: url, width: 900, height: 900, correctLevel: window.QRCode.CorrectLevel.M });
+    $('poster-event').textContent = ev.name;
     renderStatus();
     $('orders').replaceChildren();
     note('print-msg', ''); note('queue-msg', 'Loading orders.');

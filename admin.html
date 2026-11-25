@@ -60,8 +60,6 @@
 
   <div class="grid2" id="view-event" hidden>
     <section class="card sign">
-      <img class="sign-logo" src="/logo.png" alt="">
-      <p class="sign-title">Scan to order your photo magnets</p>
       <div class="row between">
         <h2>Guest QR code</h2>
         <span class="chip" id="status-chip"></span>
@@ -121,6 +119,21 @@
     </div>
   </div>
 </div>
+
+<section id="poster" aria-hidden="true">
+  <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
+  <img class="poster-logo" src="/logo.png" alt="">
+  <p class="poster-title">Scan me for photo magnets!</p>
+  <p class="poster-sub">Your favourite photos, pressed into magnets while you wait.</p>
+  <div class="poster-qr" id="poster-qr"></div>
+  <ol class="poster-steps">
+    <li><b>1</b>Scan the code</li>
+    <li><b>2</b>Pick your photos</li>
+    <li><b>3</b>We press your magnets</li>
+  </ol>
+  <p class="poster-event" id="poster-event"></p>
+  <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
+</section>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
