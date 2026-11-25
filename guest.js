@@ -166,7 +166,8 @@
       if (res.error) throw res.error;
       var count = total();
       $('done-no').textContent = '#' + res.data;
-      $('done-text').textContent = 'Thanks, ' + name + '. We are making ' + count + (count === 1 ? ' magnet' : ' magnets') + ' for you. Keep this number and listen for your name at the table.';
+      $('done-hello').textContent = 'You are all set, ' + name + '!';
+      $('done-text').textContent = 'We are making ' + count + (count === 1 ? ' magnet' : ' magnets') + ' for you. Keep this number and listen for your name at the table.';
       try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, at: Date.now() })); } catch (err) {}
       state.items = []; state.orderId = null;
       $('last-order').hidden = true;

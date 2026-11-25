@@ -5,13 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Sona Magnets order</title>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="/logo.png">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+<div class="band"><img src="/logo.png" alt="Sona Magnets Co." width="190" height="190"></div>
 <main class="phone">
-  <header class="brand">
-    <p class="wordmark">Sona Magnets</p>
+  <header class="hello">
     <h1 id="event-name">One moment</h1>
     <p class="sub" id="welcome"></p>
   </header>
@@ -30,8 +31,9 @@
   <section id="view-form" hidden>
     <form class="stack" id="order-form" novalidate>
       <div class="card">
+        <div class="step"><b>1</b><h2>Who is this for?</h2></div>
         <label for="guest-name">Your name
-          <input id="guest-name" type="text" maxlength="60" autocomplete="name" enterkeyhint="done">
+          <input id="guest-name" type="text" maxlength="60" autocomplete="name" enterkeyhint="done" placeholder="So we can call you">
         </label>
         <label for="guest-contact" id="contact-wrap" hidden>Phone or email (optional)
           <input id="guest-contact" type="text" maxlength="120">
@@ -39,22 +41,25 @@
       </div>
       <div class="card">
         <div class="row between">
-          <h2>Your photos</h2>
+          <div class="step"><b>2</b><h2>Pick your photos</h2></div>
           <p class="count" id="counter"></p>
         </div>
         <p class="sub" id="photo-help">Each photo becomes a 2 inch square magnet. Tap a photo to move or zoom it.</p>
         <ul class="tiles" id="photos"></ul>
-        <label class="btn primary wide" for="file-input" id="add-label">Add photos</label>
+        <label class="btn wide" for="file-input" id="add-label">Add photos</label>
         <input class="visually-hidden" type="file" id="file-input" accept="image/*" multiple>
         <p class="note" id="photo-msg" role="status"></p>
       </div>
-      <button class="btn primary wide big" type="submit" id="submit">Send my order</button>
-      <p class="note" id="form-msg" role="alert"></p>
+      <div class="card">
+        <div class="step"><b>3</b><h2>Send it over</h2></div>
+        <button class="btn primary wide big" type="submit" id="submit">Send my order</button>
+        <p class="note" id="form-msg" role="alert"></p>
+      </div>
     </form>
   </section>
 
   <section class="card done" id="view-done" hidden>
-    <p class="eyebrow">Order sent</p>
+    <p class="eyebrow" id="done-hello">You are all set!</p>
     <p class="order-no" id="done-no"></p>
     <p id="done-text"></p>
     <button class="btn" type="button" id="again">Start another order</button>
@@ -66,7 +71,7 @@
     <h2 id="ed-title">Frame your photo</h2>
     <canvas id="editor-canvas" width="720" height="720" tabindex="0" aria-label="Drag to move the photo. Pinch or use the slider to zoom."></canvas>
     <label for="zoom">Zoom <input type="range" id="zoom" min="1" max="4" step="0.01" value="1"></label>
-    <p class="legend"><i></i>Inside the dashed square is the front of the magnet. The lighter border wraps around the edge.</p>
+    <p class="legend"><i></i>Inside the dashed square is the front of your magnet. The lighter border wraps around the edge.</p>
     <button class="btn primary wide" type="button" id="editor-done">Done</button>
   </div>
 </div>

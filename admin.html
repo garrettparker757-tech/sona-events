@@ -5,20 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Sona Events staff</title>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" href="/logo.png">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+<div class="band slim"><div class="inner">
+  <img src="/logo.png" alt="Sona Magnets Co." width="84" height="84">
+  <div class="row">
+    <button class="btn small" type="button" id="back" hidden>All events</button>
+    <button class="btn small" type="button" id="signout" hidden>Sign out</button>
+  </div>
+</div></div>
 <div class="desk">
   <header class="topbar">
-    <div>
-      <p class="wordmark">Sona Magnets</p>
-      <h1 id="page-title">Events</h1>
-    </div>
-    <div class="row">
-      <button class="btn small" type="button" id="back" hidden>All events</button>
-      <button class="btn small" type="button" id="signout" hidden>Sign out</button>
-    </div>
+    <h1 id="page-title">Events</h1>
   </header>
 
   <section class="card narrow" id="view-loading"><p>Checking your sign-in.</p></section>
@@ -59,6 +60,7 @@
 
   <div class="grid2" id="view-event" hidden>
     <section class="card sign">
+      <img class="sign-logo" src="/logo.png" alt="">
       <p class="sign-title">Scan to order your photo magnets</p>
       <div class="row between">
         <h2>Guest QR code</h2>
@@ -95,7 +97,7 @@
           <button class="btn" type="button" id="print-all">Make sheets for everything waiting</button>
         </div>
         <p class="note" id="print-msg" role="status"></p>
-        <div class="card ready" id="ready" hidden>
+        <div class="card soft ready" id="ready" hidden>
           <p id="ready-text"></p>
           <div class="row">
             <a class="btn primary" id="ready-open" target="_blank" rel="noopener">Open PDF to print</a>

@@ -56,7 +56,7 @@
     state.events = res.data;
     var ul = $('events'); ul.replaceChildren();
     state.events.forEach(function (ev) {
-      var li = el('li', 'card');
+      var li = el('li', 'card soft');
       var left = el('div');
       left.appendChild(el('h3', null, ev.name));
       left.appendChild(el('p', 'note', 'Created ' + new Date(ev.created_at).toLocaleDateString() + ', up to ' + ev.max_magnets + ' magnets per order'));
@@ -171,7 +171,7 @@
 
     var ul = $('orders'); ul.replaceChildren();
     state.orders.slice().sort(function (a, b) { return (rank[a.status] - rank[b.status]) || (a.order_no - b.order_no); }).forEach(function (o) {
-      var li = el('li', 'order');
+      var li = el('li', 'order' + (o.status === 'new' ? ' waiting' : ''));
       var head = el('div', 'row between');
       var who = el('div', 'row');
       who.appendChild(el('span', 'no', '#' + o.order_no));
@@ -197,6 +197,9 @@
       li.appendChild(thumbs);
 
       var actions = el('div', 'row');
+      var one = el('button', 'btn small primary', 'Print this order'); one.type = 'button';
+      one.addEventListener('click', function () { makeSheets('order', o); });
+      actions.appendChild(one);
       if (o.status !== 'done') {
         var done = el('button', 'btn small', 'Picked up'); done.type = 'button';
         done.addEventListener('click', function () { setOrder(o, { status: 'done' }); });
@@ -260,29 +263,32 @@
     if (state.pending) { URL.revokeObjectURL(state.pending.url); state.pending = null; }
     $('ready').hidden = true;
   }
-  async function makeSheets(all) {
+  async function makeSheets(mode, order) {
     if (state.busy) return;
     if (!window.jspdf) { note('print-msg', 'The PDF tool did not load. Reload the page.', 'bad'); return; }
-    var rows = waitingRows();
+    var rows;
+    if (mode === 'order') rows = order.order_photos.map(function (p) { return { order: order, photo: p }; });
+    else { rows = waitingRows(); if (mode === 'one') rows = pickOneSheet(rows, layout().per); }
     if (!rows.length) return;
-    if (!all) rows = pickOneSheet(rows, layout().per);
     state.busy = true; discardPending();
     note('print-msg', 'Building the PDF.');
     try {
       var out = await buildPdf(rows), url = URL.createObjectURL(out.blob);
       state.pending = { rows: rows, url: url };
-      $('ready-text').textContent = 'Ready: ' + out.magnets + (out.magnets === 1 ? ' magnet' : ' magnets') + ' on ' + out.sheets + (out.sheets === 1 ? ' sheet.' : ' sheets.');
+      $('ready-text').textContent = 'Ready: ' + (mode === 'order' ? 'order #' + order.order_no + ' for ' + order.guest_name + ', ' : '') +
+        out.magnets + (out.magnets === 1 ? ' magnet' : ' magnets') + ' on ' + out.sheets + (out.sheets === 1 ? ' sheet.' : ' sheets.');
       $('ready-open').href = url;
       $('ready-save').href = url; $('ready-save').download = 'sona-sheets-' + Date.now() + '.pdf';
       $('ready').hidden = false;
       note('print-msg', '');
+      $('ready').scrollIntoView({ block: 'center', behavior: 'smooth' });
     } catch (err) {
       note('print-msg', 'The PDF could not be built. Check the connection and try again.', 'bad');
     }
     state.busy = false;
   }
-  $('print-one').addEventListener('click', function () { makeSheets(false); });
-  $('print-all').addEventListener('click', function () { makeSheets(true); });
+  $('print-one').addEventListener('click', function () { makeSheets('one'); });
+  $('print-all').addEventListener('click', function () { makeSheets('all'); });
   $('ready-discard').addEventListener('click', function () { discardPending(); renderOrders(); });
   $('ready-mark').addEventListener('click', async function () {
     var pend = state.pending; if (!pend) return;

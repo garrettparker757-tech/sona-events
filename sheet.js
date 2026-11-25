@@ -27,7 +27,8 @@
     return { cols: cols, rows: rows, per: cols * rows, left: left, top: T.top, pitchX: pitchX, pitchY: pitchY,
              off: (T.cut - T.photo) / 2, bottom: T.top + rows * T.cut + (rows - 1) * T.gapY };
   }
-  function slotXY(G, i) { return { x: G.left + (i % G.cols) * G.pitchX, y: G.top + Math.floor(i / G.cols) * G.pitchY }; }
+  /* Magnets fill down the first column, then the next, so a small order sits in one strip to cut. */
+  function slotXY(G, i) { return { x: G.left + Math.floor(i / G.rows) * G.pitchX, y: G.top + (i % G.rows) * G.pitchY }; }
   function octagon(T) {
     var c = Math.max(0, Math.min(T.corner, T.cut / 2)), s = T.cut;
     return [[c, 0], [s - c, 0], [s, c], [s, s - c], [s - c, s], [c, s], [0, s - c], [0, c]];
