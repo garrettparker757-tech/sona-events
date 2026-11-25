@@ -7,3 +7,9 @@
 -- To remove one:           delete from public.staff where email = 'name@example.com';
 --
 -- The full definitions live in the Supabase project under Database > Migrations.
+--
+-- Later changes (also under Database > Migrations):
+--  * submit_order is safe to retry and accepts an optional guest note (orders.note).
+--  * event_upload_paths() lists an event's uploaded photos so the staff page can delete them.
+--  * Sign-ups are closed: a trigger on auth.users only lets an account be created for an email in public.staff.
+--    To add staff: insert the email into public.staff first, then add the user in Supabase.

@@ -78,6 +78,19 @@
         <a class="btn small" id="open-link" target="_blank" rel="noopener">Open guest page</a>
         <button class="btn small" type="button" id="print-sign">Print sign</button>
       </div>
+      <div class="after">
+        <h3>After the event</h3>
+        <p class="note">Remove every guest photo and order from this event. The event itself stays in your list, closed.</p>
+        <button class="btn small" type="button" id="purge-open">Delete photos and orders</button>
+        <div class="card soft danger" id="purge-confirm" hidden>
+          <p id="purge-text"></p>
+          <div class="row">
+            <button class="btn small" type="button" id="purge-yes">Yes, delete them for good</button>
+            <button class="btn small" type="button" id="purge-no">Keep them</button>
+          </div>
+        </div>
+        <p class="note" id="purge-msg" role="status"></p>
+      </div>
     </section>
 
     <div class="stack">

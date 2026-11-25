@@ -106,6 +106,7 @@
     if (window.QRCode) new window.QRCode(pq, { text: url, width: 900, height: 900, correctLevel: window.QRCode.CorrectLevel.M });
     $('poster-event').textContent = ev.name;
     renderStatus();
+    purgeReset(); note('purge-msg', '');
     $('orders').replaceChildren();
     note('print-msg', ''); note('queue-msg', 'Loading orders.');
     show('view-event');
@@ -135,7 +136,7 @@
   async function loadOrders() {
     var ev = state.event; if (!ev) return;
     var res = await sb.from('orders')
-      .select('id, order_no, guest_name, contact, status, created_at, order_photos(id, path, qty, printed_at, created_at)')
+      .select('id, order_no, guest_name, contact, note, status, created_at, order_photos(id, path, qty, printed_at, created_at)')
       .eq('event_id', ev.id).order('order_no', { ascending: true });
     if (!state.event || state.event.id !== ev.id) return;
     if (res.error) { note('queue-msg', 'Could not refresh the queue. Trying again.', 'bad'); return; }
@@ -188,6 +189,7 @@
       head.appendChild(meta);
       li.appendChild(head);
 
+      if (o.note) li.appendChild(el('p', 'guest-note', 'Note: ' + o.note));
       var thumbs = el('div', 'thumbs');
       o.order_photos.forEach(function (p) {
         var t = el('div', 'thumb' + (p.printed_at ? ' printed' : ''));
@@ -231,6 +233,49 @@
     if (r.error) { note('queue-msg', 'That did not save. Try again.', 'bad'); return; }
     loadOrders();
   }
+
+  /* ---------- after the event: delete photos and orders ---------- */
+  function purgeReset() { $('purge-confirm').hidden = true; $('purge-open').hidden = false; }
+  $('purge-open').addEventListener('click', function () {
+    var n = state.orders.length;
+    $('purge-text').textContent = 'This closes the event and permanently deletes ' + (n === 1 ? '1 order' : n + ' orders') + ' and every uploaded photo. It cannot be undone.';
+    $('purge-confirm').hidden = false; this.hidden = true; note('purge-msg', '');
+  });
+  $('purge-no').addEventListener('click', purgeReset);
+  $('purge-yes').addEventListener('click', async function () {
+    var ev = state.event; if (!ev || state.busy) return;
+    state.busy = true; this.disabled = true; discardPending();
+    try {
+      note('purge-msg', 'Closing the event.');
+      var closed = await sb.from('events').update({ status: 'closed' }).eq('id', ev.id).select().single();
+      if (closed.error) throw closed.error;
+      state.event = closed.data; renderStatus();
+      var removed = 0;
+      for (var round = 0; round < 200; round++) {
+        var list = await sb.rpc('event_upload_paths', { p_event_id: ev.id });
+        if (list.error) throw list.error;
+        var paths = list.data || [];
+        if (!paths.length) break;
+        for (var i = 0; i < paths.length; i += 100) {
+          var del = await sb.storage.from('uploads').remove(paths.slice(i, i + 100));
+          if (del.error) throw del.error;
+          removed += Math.min(100, paths.length - i);
+          note('purge-msg', 'Deleted ' + removed + ' photos so far.');
+        }
+      }
+      var left = await sb.rpc('event_upload_paths', { p_event_id: ev.id });
+      if (left.error || (left.data || []).length) throw new Error('PHOTOS_LEFT');
+      var gone = await sb.from('orders').delete().eq('event_id', ev.id);
+      if (gone.error) throw gone.error;
+      state.blobs.forEach(function (pr) { pr.then(function (b) { URL.revokeObjectURL(b.url); }).catch(function () {}); });
+      state.blobs = new Map(); state.sig = '';
+      await loadOrders();
+      note('purge-msg', 'Done. ' + removed + (removed === 1 ? ' photo was' : ' photos were') + ' deleted along with the orders.', 'good');
+    } catch (err) {
+      note('purge-msg', 'Something stopped partway through. Nothing is lost that was not meant to be deleted; press the button again to finish.', 'bad');
+    }
+    state.busy = false; this.disabled = false; purgeReset();
+  });
 
   /* ---------- print sheets ---------- */
   function toDataUrl(blob) {

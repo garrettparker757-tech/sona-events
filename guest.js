@@ -213,7 +213,8 @@
         res = await sb.rpc('submit_order', {
           p_slug: slug, p_order_id: state.orderId, p_name: name,
           p_contact: $('guest-contact').value.trim(),
-          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty }; })
+          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty }; }),
+          p_note: $('guest-note').value.trim()
         });
         if (!res.error || /EVENT_CLOSED|TOO_MANY|BAD_/.test(String(res.error.message || ''))) break;
         await wait(1200 * (attempt + 1));
@@ -240,8 +241,9 @@
   $('file-input').addEventListener('change', function () { addFiles(this.files); this.value = ''; });
   $('to-name').addEventListener('click', goName);
   $('guest-name').addEventListener('input', function () { note('form-msg', ''); });
+  $('note-open').addEventListener('click', function () { this.hidden = true; $('note-wrap').hidden = false; $('guest-note').focus(); });
   $('back-photos').addEventListener('click', function () { show('view-photos', 'photos-title'); });
-  $('again').addEventListener('click', function () { $('guest-name').value = ''; renderPhotos(); showLastOrder(); show('view-photos', 'photos-title'); });
+  $('again').addEventListener('click', function () { $('guest-name').value = ''; $('guest-note').value = ''; $('note-wrap').hidden = true; $('note-open').hidden = false; renderPhotos(); showLastOrder(); show('view-photos', 'photos-title'); });
 
   (async function start() {
     if (!window.supabase || !slug) {
