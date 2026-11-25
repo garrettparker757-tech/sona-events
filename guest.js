@@ -35,7 +35,7 @@
       var saved = JSON.parse(localStorage.getItem(storeKey()) || 'null');
       if (!saved || Date.now() - saved.at > 12 * 3600 * 1000) return;
       $('last-no').textContent = 'Your order number is ' + saved.no + '.';
-      $('last-text').textContent = 'We will call ' + saved.name + ' when it is ready. You can order more below.';
+      $('last-text').textContent = 'Magnets take 10-15 minutes. Pick them up at the table under the name ' + saved.name + '. You can order more below.';
       $('last-order').hidden = false;
     } catch (err) {}
   }
@@ -223,7 +223,7 @@
       var count = total();
       $('done-hello').textContent = 'You are all set, ' + name + '!';
       $('done-no').textContent = res.data;
-      $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. Listen for your name at the table.';
+      $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. They will be ready in 10-15 minutes, so feel free to shop around. Then come back to the table and tell us your name or order number.';
       try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, at: Date.now() })); } catch (err) {}
       state.items = []; state.orderId = null;
       $('last-order').hidden = true;
@@ -264,7 +264,7 @@
     state.event = ev;
     document.title = ev.name + ' | Sona Magnets';
     $('event-name').textContent = ev.name;
-    $('welcome').textContent = ev.welcome || 'Turn your favourite photos into magnets.';
+    $('welcome').textContent = ev.welcome || 'Your photos, made into magnets in 10-15 minutes while you shop around.';
     if (ev.status !== 'live') { closed('Orders are closed', 'This event is not taking photo orders right now. Please ask us at the Sona Magnets table.'); return; }
     $('contact-wrap').hidden = !ev.ask_contact;
     renderPhotos();
