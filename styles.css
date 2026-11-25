@@ -134,6 +134,17 @@ body.guest .qty output { min-width: 34px; font-size: 1.25rem; }
 .editor { width: 100%; max-width: 460px; }
 .editor canvas { width: 100%; width: min(100%, 52vh); align-self: center; border-radius: 14px; border: 2.5px solid var(--ink); touch-action: none; cursor: grab; background: var(--teal-soft); display: block; }
 .zoomrow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.zoomslide { font-weight: 800; }
+.zoomslide input[type=range] { width: 100%; height: 44px; margin: 0; accent-color: var(--teal-deep); -webkit-appearance: none; appearance: none; background: transparent; }
+.zoomslide input[type=range]::-webkit-slider-runnable-track { height: 12px; border-radius: 999px; background: var(--teal-soft); border: 2px solid var(--ink); }
+.zoomslide input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 36px; height: 36px; margin-top: -14px; border-radius: 50%; background: var(--sun); border: 2.5px solid var(--ink); box-shadow: 0 3px 0 var(--ink); }
+.zoomslide input[type=range]::-moz-range-track { height: 12px; border-radius: 999px; background: var(--teal-soft); border: 2px solid var(--ink); }
+.zoomslide input[type=range]::-moz-range-thumb { width: 32px; height: 32px; border-radius: 50%; background: var(--sun); border: 2.5px solid var(--ink); }
+.proofs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.proof { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; font-weight: 800; }
+.proof canvas { width: 100%; max-width: 200px; border-radius: 12px; border: 2.5px solid var(--ink); box-shadow: 0 5px 0 var(--ink); display: block; background: #fff; }
+.proofs .proof:only-child { grid-column: 1 / -1; }
+.proofs .proof:only-child canvas { max-width: 260px; }
 .legend { font-size: 0.95rem; color: var(--ink-soft); }
 .legend i { display: inline-block; width: 18px; border-top: 3px dashed var(--teal-deep); vertical-align: middle; margin-right: 6px; }
 .sending { width: 100%; max-width: 420px; text-align: center; align-self: center; }

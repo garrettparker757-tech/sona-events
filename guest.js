@@ -9,7 +9,7 @@
 
   var state = { event: null, items: [], editing: null, nextId: 1, orderId: null, sending: false, busy: false };
   var sb = null;
-  var VIEWS = ['view-loading', 'view-closed', 'view-photos', 'view-name', 'view-done'];
+  var VIEWS = ['view-loading', 'view-closed', 'view-photos', 'view-name', 'view-check', 'view-done'];
 
   function show(view, focusId) {
     VIEWS.forEach(function (id) { $(id).hidden = id !== view; });
@@ -132,6 +132,7 @@
     var it = state.editing; if (!it) return;
     $('zoom-out').disabled = it.zoom <= 1.001;
     $('zoom-in').disabled = it.zoom >= 2.999;
+    $('zoom').value = it.zoom;
   }
   function zoomBy(step) {
     var it = state.editing; if (!it) return;
@@ -144,21 +145,58 @@
     editor.draw(); syncZoom();
     try { $('editor-done').focus({ preventScroll: true }); } catch (err) {}
   }
-  function closeEditor() { state.editing = null; $('editor').hidden = true; renderPhotos(); }
+  function closeEditor() {
+    state.editing = null; $('editor').hidden = true; renderPhotos();
+    if (state.returnToCheck) { state.returnToCheck = false; goCheck(); }
+  }
+  $('zoom').addEventListener('input', function () {
+    var it = state.editing; if (!it) return;
+    it.zoom = C.clamp(parseFloat(this.value) || 1, 1, 3);
+    C.normalize(it); editor.draw();
+    $('zoom-out').disabled = it.zoom <= 1.001; $('zoom-in').disabled = it.zoom >= 2.999;
+  });
   $('zoom-in').addEventListener('click', function () { zoomBy(0.25); });
   $('zoom-out').addEventListener('click', function () { zoomBy(-0.25); });
   $('editor-done').addEventListener('click', closeEditor);
   $('editor').addEventListener('click', function (e) { if (e.target === this) closeEditor(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && state.editing) closeEditor(); });
 
-  /* ---------- step 2: name and send ---------- */
+  /* ---------- step 2: name ---------- */
   function goName() {
     if (!state.items.length) return;
-    var n = total();
-    var cost = C.priceFor(n);
-    $('summary').textContent = 'You are ordering ' + plural(n, 'magnet') + '.' + (cost != null ? ' Your total is ' + C.money(cost) + ', paid at the table.' : '');
     note('form-msg', '');
     show('view-name', 'guest-name');
+  }
+
+  /* ---------- step 3: one last look ---------- */
+  function goCheck(e) {
+    if (e) e.preventDefault();
+    var name = $('guest-name').value.trim();
+    if (!name) { note('form-msg', 'Please type your name so we know who to call.', 'bad'); $('guest-name').focus(); return; }
+    if (!state.items.length) { show('view-photos', 'photos-title'); return; }
+    var ul = $('proofs'), n = total(), cost = C.priceFor(n), ratio = CFG.crop.photo / CFG.crop.face;
+    ul.replaceChildren();
+    state.items.forEach(function (it, idx) {
+      var li = el('li', 'proof');
+      var cv = document.createElement('canvas'), px = 360, full = px * ratio;
+      cv.width = cv.height = px;
+      cv.setAttribute('role', 'img');
+      cv.setAttribute('aria-label', 'Magnet ' + (idx + 1) + ' as it will be made');
+      var g = cv.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, px, px);
+      g.imageSmoothingQuality = 'high';
+      /* show only the front of the magnet: the part inside the dashed square */
+      C.drawCrop(g, it, (px - full) / 2, (px - full) / 2, full);
+      li.appendChild(cv);
+      li.appendChild(el('p', null, it.qty === 1 ? '1 magnet' : it.qty + ' magnets of this photo'));
+      var fix = el('button', 'btn small', 'Adjust'); fix.type = 'button';
+      fix.addEventListener('click', function () { state.returnToCheck = true; openEditor(it); });
+      li.appendChild(fix);
+      ul.appendChild(li);
+    });
+    $('summary').textContent = plural(n, 'magnet') + ' for ' + name + '.' + (cost != null ? ' Your total is ' + C.money(cost) + ', paid at the table.' : '');
+    note('check-msg', '');
+    show('view-check', 'check-title');
   }
   /* The whole photo goes up (scaled to a sensible size) along with how it was framed,
      so staff can re-frame it later if the crop turns out wrong. */
@@ -178,7 +216,7 @@
     if (m.indexOf('EVENT_CLOSED') >= 0) return 'This event just stopped taking orders. Please ask us at the Sona Magnets table.';
     if (m.indexOf('TOO_MANY') >= 0 || m.indexOf('BAD_PHOTOS') >= 0) return 'That is more magnets than one order allows. Go back, remove a photo, and try again.';
     if (m.indexOf('BAD_NAME') >= 0) return 'Please type your name.';
-    return 'Your order did not go through, most likely because of a weak signal. Tap Send my order to try again, or ask us at the table.';
+    return 'Your order did not go through, most likely because of a weak signal. Tap the yellow button to try again, or ask us at the table.';
   }
   function progress(text, done, of) {
     $('sending-text').textContent = text;
@@ -198,13 +236,13 @@
     throw last;
   }
   async function send(e) {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (state.sending) return;
     var name = $('guest-name').value.trim();
-    if (!name) { note('form-msg', 'Please type your name so we know who to call.', 'bad'); $('guest-name').focus(); return; }
+    if (!name) { show('view-name', 'guest-name'); return; }
     if (!state.items.length) { show('view-photos', 'photos-title'); return; }
     state.sending = true;
-    $('submit').disabled = true; note('form-msg', '');
+    $('submit').disabled = true; note('check-msg', '');
     var steps = state.items.length + 1;
     progress('Getting started.', 0, steps);
     $('sending').hidden = false;
@@ -244,13 +282,15 @@
       show('view-done');
     } catch (err) {
       $('sending').hidden = true;
-      note('form-msg', friendly(err), 'bad');
+      note('check-msg', friendly(err), 'bad');
     }
     state.sending = false; $('submit').disabled = false;
   }
 
   /* ---------- start ---------- */
-  $('order-form').addEventListener('submit', send);
+  $('order-form').addEventListener('submit', goCheck);
+  $('submit').addEventListener('click', send);
+  $('check-back').addEventListener('click', function () { show('view-photos', 'photos-title'); });
   $('file-input').addEventListener('change', function () { addFiles(this.files); this.value = ''; });
   $('to-name').addEventListener('click', goName);
   $('guest-name').addEventListener('input', function () { note('form-msg', ''); });

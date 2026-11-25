@@ -482,6 +482,7 @@
   function fixButtons() {
     var it = state.fixing && state.fixing.item; if (!it) return;
     $('fix-out').disabled = it.zoom <= 1.001; $('fix-in').disabled = it.zoom >= 2.999;
+    $('fix-zoom').value = it.zoom;
   }
   function closeFix() { state.fixing = null; $('fix').hidden = true; }
   async function openFix(order, photo) {
@@ -500,6 +501,12 @@
     it.zoom = C.clamp(Math.round((it.zoom + step) * 100) / 100, 1, 3);
     C.normalize(it); fixEditor.draw(); fixButtons();
   }
+  $('fix-zoom').addEventListener('input', function () {
+    var it = state.fixing && state.fixing.item; if (!it) return;
+    it.zoom = C.clamp(parseFloat(this.value) || 1, 1, 3);
+    C.normalize(it); fixEditor.draw();
+    $('fix-out').disabled = it.zoom <= 1.001; $('fix-in').disabled = it.zoom >= 2.999;
+  });
   $('fix-in').addEventListener('click', function () { fixZoom(0.25); });
   $('fix-out').addEventListener('click', function () { fixZoom(-0.25); });
   $('fix-reset').addEventListener('click', function () {

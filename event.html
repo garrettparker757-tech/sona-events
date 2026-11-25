@@ -31,7 +31,7 @@
   <!-- Step 1: photos -->
   <section class="stack" id="view-photos" hidden>
     <div class="card">
-      <p class="stepline">Step 1 of 2</p>
+      <p class="stepline">Step 1 of 3</p>
       <h2 id="photos-title" tabindex="-1">Choose your photos</h2>
       <p id="photo-help"></p>
       <p class="pricelist" id="price-list"></p>
@@ -50,7 +50,7 @@
   <!-- Step 2: name and send -->
   <section class="stack" id="view-name" hidden>
     <form class="card" id="order-form" novalidate>
-      <p class="stepline">Step 2 of 2</p>
+      <p class="stepline">Step 2 of 3</p>
       <h2 id="name-title" tabindex="-1">What is your name?</h2>
       <label for="guest-name">We use this name when you pick up your magnets
         <input id="guest-name" type="text" maxlength="60" autocomplete="given-name" autocapitalize="words" enterkeyhint="done" placeholder="Your first name">
@@ -62,11 +62,24 @@
       <label for="guest-note" id="note-wrap" hidden>Your note
         <textarea id="guest-note" maxlength="300" rows="3" placeholder="For example: please make the dog photo extra bright"></textarea>
       </label>
-      <p class="summary" id="summary"></p>
-      <button class="btn primary wide big" type="submit" id="submit">Send my order</button>
+      <button class="btn primary wide big" type="submit" id="to-check">Next</button>
       <button class="btn wide" type="button" id="back-photos">Back to my photos</button>
       <p class="note" id="form-msg" role="alert"></p>
     </form>
+  </section>
+
+  <!-- Step 3: one last look, then send -->
+  <section class="stack" id="view-check" hidden>
+    <div class="card">
+      <p class="stepline">Step 3 of 3</p>
+      <h2 id="check-title" tabindex="-1">One last look</h2>
+      <p>This is exactly how your magnets will look. Once they are made, we cannot change them.</p>
+      <ul class="proofs" id="proofs"></ul>
+      <p class="summary" id="summary"></p>
+      <button class="btn primary wide big" type="button" id="submit">Yes, make my magnets</button>
+      <button class="btn wide" type="button" id="check-back">Change a photo</button>
+      <p class="note" id="check-msg" role="alert"></p>
+    </div>
   </section>
 
   <section class="card done" id="view-done" hidden>
@@ -87,6 +100,9 @@
     <h2 id="ed-title">Adjust your photo</h2>
     <p>Drag the photo with your finger to move it.</p>
     <canvas id="editor-canvas" width="720" height="720" tabindex="0" aria-label="Your photo. Drag to move it."></canvas>
+    <label class="zoomslide" for="zoom">Slide to zoom
+      <input type="range" id="zoom" min="1" max="3" step="0.01" value="1">
+    </label>
     <div class="zoomrow">
       <button class="btn" type="button" id="zoom-out">&minus; Smaller</button>
       <button class="btn" type="button" id="zoom-in">+ Bigger</button>
