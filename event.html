@@ -117,14 +117,20 @@
 <div class="backdrop" id="editor" hidden>
   <div class="editor card" role="dialog" aria-modal="true" aria-labelledby="ed-title">
     <h2 id="ed-title">Adjust your photo</h2>
-    <p>Drag the photo with your finger to move it.</p>
+    <div class="seg fitseg" role="group" aria-label="How the photo sits on the magnet">
+      <button type="button" id="mode-fill" aria-pressed="true">Fill the magnet</button>
+      <button type="button" id="mode-fit" aria-pressed="false">Fit whole photo</button>
+    </div>
+    <p id="ed-help">Drag the photo with your finger to move it.</p>
     <canvas id="editor-canvas" width="720" height="720" tabindex="0" aria-label="Your photo. Drag to move it."></canvas>
-    <label class="zoomslide" for="zoom">Slide to zoom
-      <input type="range" id="zoom" min="1" max="3" step="0.01" value="1">
-    </label>
-    <div class="zoomrow">
-      <button class="btn" type="button" id="zoom-out">&minus; Smaller</button>
-      <button class="btn" type="button" id="zoom-in">+ Bigger</button>
+    <div class="stack" id="zoom-tools">
+      <label class="zoomslide" for="zoom">Slide to zoom
+        <input type="range" id="zoom" min="1" max="3" step="0.01" value="1">
+      </label>
+      <div class="zoomrow">
+        <button class="btn" type="button" id="zoom-out">&minus; Smaller</button>
+        <button class="btn" type="button" id="zoom-in">+ Bigger</button>
+      </div>
     </div>
     <p class="legend"><i></i>Everything inside the dashed square shows on the front of your magnet.</p>
     <button class="btn primary wide big" type="button" id="editor-done">Looks good</button>

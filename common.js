@@ -14,7 +14,17 @@
     it.cx = (r.sx + r.s / 2) / it.iw;
     it.cy = (r.sy + r.s / 2) / it.ih;
   }
+  /* A photo either fills the square (cropped) or, with fit on, sits whole on the front of the magnet
+     with white around it. FIT_SHARE is how much of the front its longer side covers. */
+  var FIT_SHARE = 0.92;
   function drawCrop(g, it, x, y, size) {
+    if (it.fit) {
+      var box = size * window.SONA.crop.face / window.SONA.crop.photo * FIT_SHARE, k = box / Math.max(it.iw, it.ih);
+      var w = it.iw * k, h = it.ih * k;
+      g.fillStyle = '#fff'; g.fillRect(x, y, size, size);
+      g.drawImage(it.img, x + (size - w) / 2, y + (size - h) / 2, w, h);
+      return;
+    }
     var r = cropRect(it);
     g.drawImage(it.img, r.sx, r.sy, r.s, r.s, x, y, size, size);
   }
@@ -165,7 +175,7 @@
     });
     canvas.addEventListener('pointermove', function (e) {
       if (!pts.has(e.pointerId)) return;
-      var it = getItem(); if (!it) return;
+      var it = getItem(); if (!it || it.fit) return;   /* a fitted photo is already whole and centred */
       var prev = pts.get(e.pointerId), cur = { x: e.clientX, y: e.clientY };
       pts.set(e.pointerId, cur);
       if (pts.size === 1) {
@@ -183,7 +193,7 @@
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
     canvas.addEventListener('keydown', function (e) {
-      var it = getItem(); if (!it) return;
+      var it = getItem(); if (!it || it.fit) return;
       var step = cropRect(it).s / 40;
       var d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (!d) return;

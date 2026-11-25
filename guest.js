@@ -138,7 +138,7 @@
       note('photo-msg', 'Opening photo ' + (i + 1) + ' of ' + files.length + '. One moment.');
       var photo = await C.loadPhoto(files[i]);
       if (photo) {
-        state.items.push({ id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, blob: photo.blob, zoom: 1, cx: 0.5, cy: 0.5, qty: 1, rev: 0, uploaded: null });
+        state.items.push({ id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, blob: photo.blob, fit: false, zoom: 1, cx: 0.5, cy: 0.5, qty: 1, rev: 0, uploaded: null });
         room--;
         renderPhotos();
       } else { failed++; }
@@ -153,6 +153,20 @@
 
   /* ---------- adjust one photo ---------- */
   var editor = C.attachEditor($('editor-canvas'), function () { return state.editing; }, function () { syncZoom(); }, function () { return state.overlay; });
+  /* Fill crops the photo to the square. Fit keeps the whole photo and puts white around it. */
+  function syncMode() {
+    var it = state.editing; if (!it) return;
+    $('mode-fill').setAttribute('aria-pressed', String(!it.fit));
+    $('mode-fit').setAttribute('aria-pressed', String(!!it.fit));
+    $('zoom-tools').hidden = !!it.fit;
+    $('ed-help').textContent = it.fit ? 'Your whole photo is on the magnet with a white border. Nothing is cut off.' : 'Drag the photo with your finger to move it.';
+  }
+  function setMode(fit) {
+    var it = state.editing; if (!it) return;
+    it.fit = fit; editor.draw(); syncMode(); syncZoom();
+  }
+  $('mode-fill').addEventListener('click', function () { setMode(false); });
+  $('mode-fit').addEventListener('click', function () { setMode(true); });
   function syncZoom() {
     var it = state.editing; if (!it) return;
     $('zoom-out').disabled = it.zoom <= 1.001;
@@ -167,7 +181,7 @@
   function openEditor(it) {
     state.editing = it;
     $('editor').hidden = false;
-    editor.draw(); syncZoom();
+    editor.draw(); syncMode(); syncZoom();
     try { $('editor-done').focus({ preventScroll: true }); } catch (err) {}
   }
   function closeEditor() {
@@ -222,7 +236,12 @@
       /* show only the front of the magnet: the part inside the dashed square */
       C.drawCrop(g, it, (px - full) / 2, (px - full) / 2, full);
       C.drawOverlay(g, state.overlay, (px - full) / 2, (px - full) / 2, full);
-      li.appendChild(cv);
+      /* tapping the picture adjusts it, the same as the Adjust button under it */
+      var pic = el('button', 'proofpic'); pic.type = 'button';
+      pic.setAttribute('aria-label', 'Adjust magnet ' + (idx + 1));
+      pic.appendChild(cv);
+      pic.addEventListener('click', function () { state.returnToCheck = true; openEditor(it); });
+      li.appendChild(pic);
       li.appendChild(el('p', null, it.qty === 1 ? '1 magnet' : it.qty + ' magnets of this photo'));
       var fix = el('button', 'btn small', 'Adjust'); fix.type = 'button';
       fix.addEventListener('click', function () { state.returnToCheck = true; openEditor(it); });
@@ -300,7 +319,7 @@
         res = await sb.rpc('submit_order', {
           p_slug: slug, p_order_id: state.orderId, p_name: name,
           p_contact: $('guest-contact').value.trim(),
-          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty, zoom: x.zoom, cx: x.cx, cy: x.cy }; }),
+          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty, zoom: x.zoom, cx: x.cx, cy: x.cy, fit: !!x.fit }; }),
           p_note: $('guest-note').value.trim()
         });
         if (!res.error || /EVENT_CLOSED|TOO_MANY|BAD_/.test(String(res.error.message || ''))) break;

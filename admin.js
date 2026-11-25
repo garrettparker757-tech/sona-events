@@ -452,7 +452,7 @@
     var seq = ++state.loadSeq;
     var both = await Promise.all([
       sb.from('orders')
-        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, claimed_at, claimed_by)')
+        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, claimed_at, claimed_by)')
         .eq('event_id', ev.id).order('order_no', { ascending: true }),
       sb.from('events').select('*').eq('id', ev.id).maybeSingle()
     ]);
@@ -521,13 +521,13 @@
   }
   /* How a photo is framed: the guest's choice, or the staff fix saved over it. */
   function framing(p) {
-    return { zoom: Number(p.crop_zoom) || 1, cx: p.crop_x == null ? 0.5 : Number(p.crop_x), cy: p.crop_y == null ? 0.5 : Number(p.crop_y) };
+    return { zoom: Number(p.crop_zoom) || 1, cx: p.crop_x == null ? 0.5 : Number(p.crop_x), cy: p.crop_y == null ? 0.5 : Number(p.crop_y), fit: p.crop_fit === true };
   }
   function drawFramed(canvas, pic, f) {
     var g = canvas.getContext('2d');
     g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
     g.imageSmoothingQuality = 'high';
-    C.drawCrop(g, { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy }, 0, 0, canvas.width);
+    C.drawCrop(g, { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit }, 0, 0, canvas.width);
     C.drawOverlay(g, state.overlay, 0, 0, canvas.width);
   }
   function waitingRows() {
@@ -729,14 +729,24 @@
     var it = state.fixing && state.fixing.item; if (!it) return;
     $('fix-out').disabled = it.zoom <= 1.001; $('fix-in').disabled = it.zoom >= 2.999;
     $('fix-zoom').value = it.zoom;
+    $('fix-fill').setAttribute('aria-pressed', String(!it.fit));
+    $('fix-fit').setAttribute('aria-pressed', String(!!it.fit));
+    $('fix-tools').hidden = !!it.fit;
+    $('fix-legend').textContent = it.fit ? 'The whole photo sits on the front of the magnet with a white border. Nothing is cut off.' : 'Drag to move. Everything inside the dashed square shows on the front of the magnet.';
   }
+  function fixMode(fit) {
+    var it = state.fixing && state.fixing.item; if (!it) return;
+    it.fit = fit; fixEditor.draw(); fixButtons();
+  }
+  $('fix-fill').addEventListener('click', function () { fixMode(false); });
+  $('fix-fit').addEventListener('click', function () { fixMode(true); });
   function closeFix() { state.fixing = null; $('fix').hidden = true; }
   async function openFix(order, photo) {
     note('fix-msg', '');
     $('fix-who').textContent = 'Order #' + order.order_no + ' for ' + order.guest_name + (photo.printed_at ? '. Already printed, so print the order again after saving.' : '');
     try {
       var pic = await photoPic(photo.path), f = framing(photo);
-      state.fixing = { order: order, photo: photo, item: { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy } };
+      state.fixing = { order: order, photo: photo, item: { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit } };
       C.normalize(state.fixing.item);
       $('fix').hidden = false;
       fixEditor.draw(); fixButtons();
@@ -765,7 +775,7 @@
   $('fix-save').addEventListener('click', async function () {
     var fx = state.fixing; if (!fx) return;
     var btn = this, it = fx.item; btn.disabled = true; note('fix-msg', 'Saving.');
-    var r = await sb.from('order_photos').update({ crop_zoom: it.zoom, crop_x: it.cx, crop_y: it.cy }).eq('id', fx.photo.id);
+    var r = await sb.from('order_photos').update({ crop_zoom: it.zoom, crop_x: it.cx, crop_y: it.cy, crop_fit: !!it.fit }).eq('id', fx.photo.id);
     btn.disabled = false;
     if (lostSession(r.error)) { closeFix(); return; }
     if (r.error) { note('fix-msg', 'That did not save. Check the connection and try again.', 'bad'); return; }
