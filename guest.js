@@ -86,9 +86,9 @@
       : 'Each photo becomes one square magnet. You can choose up to ' + max + '. Tap the yellow button to pick photos from your phone.';
     var cost = C.priceFor(n);
     $('counter').textContent = plural(n, 'magnet') + (cost != null ? ': ' + C.money(cost) : '');
-    var packs = (CFG.prices || []).filter(function (t) { return t.qty <= max; });
-    $('price-list').textContent = packs.map(function (t) { return t.qty + ' for ' + C.money(t.price); }).join('  \u00b7  ');
-    var hint = packHint(n, max);
+    $('price-list').textContent = C.packs(max).map(function (t) { return t.qty + ' for ' + C.money(t.price); }).join('  \u00b7  ');
+    var hint = packHint(n, max), more = hint ? null : C.oneMore(n, max);
+    if (more) hint = 'Add 1 more magnet for only ' + C.money(more.extra) + ' more. ' + more.qty + ' magnets are ' + C.money(more.price) + '.';
     $('deal').hidden = !hint;
     $('deal').textContent = hint; $('deal').className = 'deal';
     var add = $('add-label');

@@ -231,7 +231,7 @@
   });
   /* Table signs: pick which poster shows on paper, then print. */
   (function () {
-    var list = $('poster-price-list'), tiers = (CFG.prices || []).slice().sort(function (a, b) { return a.qty - b.qty; });
+    var list = $('poster-price-list'), tiers = C.packs(Infinity);
     var best = tiers.reduce(function (m, t) { return !m || t.price / t.qty < m.price / m.qty ? t : m; }, null);
     tiers.forEach(function (t) {
       var li = el('li', t === best && tiers.length > 1 ? 'best' : '');

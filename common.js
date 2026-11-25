@@ -163,7 +163,15 @@
     for (m = n + 1; m <= max; m++) if (priceFor(m) != null) { up = m; break; }
     return { down: down, up: up };
   }
-  function packSizes(max) { return tiers().filter(function (t) { return t.qty <= max; }).map(function (t) { return t.qty; }); }
+  function packs(max) { return tiers().filter(function (t) { return t.pack && t.qty <= max; }); }
+  function packSizes(max) { return packs(max).map(function (t) { return t.qty; }); }
+  /* When one more magnet completes a pack for only a few dollars, say so. */
+  function oneMore(n, max) {
+    var now = priceFor(n), next = priceFor(n + 1);
+    if (now == null || next == null || n + 1 > max) return null;
+    var isPack = tiers().some(function (t) { return t.pack && t.qty === n + 1; });
+    return isPack && next - now <= 5 ? { qty: n + 1, extra: next - now, price: next } : null;
+  }
 
-  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packSizes: packSizes, uuid: uuid, attachEditor: attachEditor };
+  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
 })();
