@@ -18,13 +18,66 @@
     var r = cropRect(it);
     g.drawImage(it.img, r.sx, r.sy, r.s, r.s, x, y, size, size);
   }
-  function loadImage(file) {
+  /* Older phones: small stand-ins for two newer browser features this app uses. */
+  if (!Element.prototype.replaceChildren) {
+    Element.prototype.replaceChildren = function () {
+      while (this.lastChild) this.removeChild(this.lastChild);
+      for (var i = 0; i < arguments.length; i++) this.appendChild(arguments[i]);
+    };
+  }
+
+  function decode(blob) {
     return new Promise(function (resolve) {
-      var url = URL.createObjectURL(file), img = new Image();
-      img.onload = function () { resolve(img); };
+      var url = URL.createObjectURL(blob), img = new Image();
+      img.onload = function () { resolve(img.naturalWidth && img.naturalHeight ? img : null); };
       img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
       img.src = url;
     });
+  }
+  /* iPhone-style HEIC photos: most phones hand them over as JPEG, but when one arrives as HEIC
+     on a browser that cannot open it, fetch a converter only then. */
+  var heicTool = null;
+  function loadHeicTool() {
+    if (!heicTool) {
+      heicTool = new Promise(function (resolve) {
+        var el = document.createElement('script');
+        el.src = 'https://cdn.jsdelivr.net/npm/heic-to@1.5.2/dist/iife/heic-to.js';
+        el.onload = function () { resolve(window.HeicTo || null); };
+        el.onerror = function () { heicTool = null; resolve(null); };
+        document.head.appendChild(el);
+      });
+    }
+    return heicTool;
+  }
+  function looksHeic(file) {
+    return /hei[cf]/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '') || !file.type;
+  }
+  async function heicToJpeg(file) {
+    try {
+      var tool = await loadHeicTool();
+      if (!tool) return null;
+      var out = await tool({ blob: file, type: 'image/jpeg', quality: 0.92 });
+      return Array.isArray(out) ? out[0] : out;
+    } catch (err) { return null; }
+  }
+  /* Opens any photo the browser (or the HEIC converter) can read and returns a working copy
+     no larger than 2000 px on its long side, which keeps old phones fast and within memory. */
+  async function loadPhoto(file) {
+    var img = await decode(file);
+    if (!img && looksHeic(file)) {
+      var jpeg = await heicToJpeg(file);
+      if (jpeg) img = await decode(jpeg);
+    }
+    if (!img) return null;
+    var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, 2000 / Math.max(w, h));
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    var g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.imageSmoothingQuality = 'high';
+    try { g.drawImage(img, 0, 0, c.width, c.height); } catch (err) { return null; }
+    URL.revokeObjectURL(img.src);
+    return { img: c, iw: c.width, ih: c.height, small: Math.min(w, h) < 700 };
   }
   function uuid() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -74,7 +127,7 @@
       } else if (pts.size === 2) {
         var two = Array.from(pts.values());
         var dist = Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y);
-        if (lastDist > 0 && dist > 0) { it.zoom = clamp(it.zoom * dist / lastDist, 1, 4); normalize(it); }
+        if (lastDist > 0 && dist > 0) { it.zoom = clamp(it.zoom * dist / lastDist, 1, 3); normalize(it); }
         lastDist = dist;
       }
       draw(); onChange(it);
@@ -92,5 +145,5 @@
     return { draw: draw };
   }
 
-  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadImage: loadImage, uuid: uuid, attachEditor: attachEditor };
+  window.SonaCommon = { clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, uuid: uuid, attachEditor: attachEditor };
 })();

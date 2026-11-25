@@ -9,73 +9,97 @@
 <link rel="icon" href="/logo.png">
 <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
-<div class="band"><img src="/logo.png" alt="Sona Magnets Co." width="190" height="190"></div>
+<body class="guest">
+<div class="band"><img src="/logo.png" alt="Sona Magnets Co." width="180" height="180"></div>
 <main class="phone">
   <header class="hello">
     <h1 id="event-name">One moment</h1>
     <p class="sub" id="welcome"></p>
   </header>
 
-  <section class="card" id="view-loading"><p>Loading the order page.</p></section>
+  <section class="card" id="view-loading"><p>Getting things ready.</p></section>
 
   <section class="card" id="view-closed" hidden>
     <h2 id="closed-title">Orders are closed</h2>
-    <p id="closed-msg">This event is not taking photo orders right now. Ask at the Sona Magnets table.</p>
+    <p id="closed-msg">This event is not taking photo orders right now. Please ask us at the Sona Magnets table.</p>
   </section>
 
   <section class="card last-order" id="last-order" hidden>
     <p><strong id="last-no"></strong> <span id="last-text"></span></p>
   </section>
 
-  <section id="view-form" hidden>
-    <form class="stack" id="order-form" novalidate>
-      <div class="card">
-        <div class="step"><b>1</b><h2>Who is this for?</h2></div>
-        <label for="guest-name">Your name
-          <input id="guest-name" type="text" maxlength="60" autocomplete="name" enterkeyhint="done" placeholder="So we can call you">
-        </label>
-        <label for="guest-contact" id="contact-wrap" hidden>Phone or email (optional)
-          <input id="guest-contact" type="text" maxlength="120">
-        </label>
-      </div>
-      <div class="card">
-        <div class="row between">
-          <div class="step"><b>2</b><h2>Pick your photos</h2></div>
-          <p class="count" id="counter"></p>
-        </div>
-        <p class="sub" id="photo-help">Each photo becomes a 2 inch square magnet. Tap a photo to move or zoom it.</p>
-        <ul class="tiles" id="photos"></ul>
-        <label class="btn wide" for="file-input" id="add-label">Add photos</label>
-        <input class="visually-hidden" type="file" id="file-input" accept="image/*" multiple>
-        <p class="note" id="photo-msg" role="status"></p>
-      </div>
-      <div class="card">
-        <div class="step"><b>3</b><h2>Send it over</h2></div>
-        <button class="btn primary wide big" type="submit" id="submit">Send my order</button>
-        <p class="note" id="form-msg" role="alert"></p>
-      </div>
+  <!-- Step 1: photos -->
+  <section class="stack" id="view-photos" hidden>
+    <div class="card">
+      <p class="stepline">Step 1 of 2</p>
+      <h2 id="photos-title" tabindex="-1">Choose your photos</h2>
+      <p id="photo-help"></p>
+      <ul class="tiles" id="photos"></ul>
+      <label class="btn primary wide big" for="file-input" id="add-label">Choose photos</label>
+      <input class="visually-hidden" type="file" id="file-input" accept="image/*" multiple>
+      <p class="note" id="photo-msg" role="status"></p>
+    </div>
+    <div class="actionbar" id="photos-bar" hidden>
+      <p class="count" id="counter"></p>
+      <button class="btn primary big" type="button" id="to-name">Next</button>
+    </div>
+  </section>
+
+  <!-- Step 2: name and send -->
+  <section class="stack" id="view-name" hidden>
+    <form class="card" id="order-form" novalidate>
+      <p class="stepline">Step 2 of 2</p>
+      <h2 id="name-title" tabindex="-1">What is your name?</h2>
+      <label for="guest-name">We will call this name when your magnets are ready
+        <input id="guest-name" type="text" maxlength="60" autocomplete="given-name" autocapitalize="words" enterkeyhint="done" placeholder="Your first name">
+      </label>
+      <label for="guest-contact" id="contact-wrap" hidden>Phone or email (optional)
+        <input id="guest-contact" type="text" maxlength="120">
+      </label>
+      <p class="summary" id="summary"></p>
+      <button class="btn primary wide big" type="submit" id="submit">Send my order</button>
+      <button class="btn wide" type="button" id="back-photos">Back to my photos</button>
+      <p class="note" id="form-msg" role="alert"></p>
     </form>
   </section>
 
   <section class="card done" id="view-done" hidden>
     <p class="eyebrow" id="done-hello">You are all set!</p>
+    <p class="sub">Your order number is</p>
     <p class="order-no" id="done-no"></p>
     <p id="done-text"></p>
-    <button class="btn" type="button" id="again">Start another order</button>
+    <button class="btn" type="button" id="again">Order more magnets</button>
   </section>
+
+  <p class="help" id="help-line">Need a hand? Just ask us at the Sona Magnets table.</p>
 </main>
 
+<!-- Adjust one photo -->
 <div class="backdrop" id="editor" hidden>
   <div class="editor card" role="dialog" aria-modal="true" aria-labelledby="ed-title">
-    <h2 id="ed-title">Frame your photo</h2>
-    <canvas id="editor-canvas" width="720" height="720" tabindex="0" aria-label="Drag to move the photo. Pinch or use the slider to zoom."></canvas>
-    <label for="zoom">Zoom <input type="range" id="zoom" min="1" max="4" step="0.01" value="1"></label>
-    <p class="legend"><i></i>Inside the dashed square is the front of your magnet. The lighter border wraps around the edge.</p>
-    <button class="btn primary wide" type="button" id="editor-done">Done</button>
+    <h2 id="ed-title">Adjust your photo</h2>
+    <p>Drag the photo with your finger to move it.</p>
+    <canvas id="editor-canvas" width="720" height="720" tabindex="0" aria-label="Your photo. Drag to move it."></canvas>
+    <div class="zoomrow">
+      <button class="btn" type="button" id="zoom-out">&minus; Smaller</button>
+      <button class="btn" type="button" id="zoom-in">+ Bigger</button>
+    </div>
+    <p class="legend"><i></i>Everything inside the dashed square shows on the front of your magnet.</p>
+    <button class="btn primary wide big" type="button" id="editor-done">Looks good</button>
   </div>
 </div>
 
+<!-- Sending -->
+<div class="backdrop" id="sending" hidden>
+  <div class="card sending" role="alertdialog" aria-modal="true" aria-labelledby="sending-title">
+    <h2 id="sending-title">Sending your order</h2>
+    <p id="sending-text" role="status">Getting started.</p>
+    <div class="meter"><i id="sending-bar"></i></div>
+    <p class="sub">Please keep this page open. This can take a minute.</p>
+  </div>
+</div>
+
+<script>if (typeof globalThis === 'undefined') { window.globalThis = window; }</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/config.js"></script>
 <script src="/common.js"></script>
