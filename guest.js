@@ -159,7 +159,7 @@
     $('mode-fill').setAttribute('aria-pressed', String(!it.fit));
     $('mode-fit').setAttribute('aria-pressed', String(!!it.fit));
     $('zoom-tools').hidden = !!it.fit;
-    $('ed-help').textContent = it.fit ? 'Your whole photo is on the magnet with a white border. Nothing is cut off.' : 'Drag the photo with your finger to move it.';
+    $('ed-help').textContent = it.fit ? 'Your whole photo is on the magnet, edge to edge, with white filling the rest. Nothing is cut off.' : 'Drag the photo with your finger to move it.';
   }
   function setMode(fit) {
     var it = state.editing; if (!it) return;

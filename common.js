@@ -15,8 +15,9 @@
     it.cy = (r.sy + r.s / 2) / it.ih;
   }
   /* A photo either fills the square (cropped) or, with fit on, sits whole on the front of the magnet
-     with white around it. FIT_SHARE is how much of the front its longer side covers. */
-  var FIT_SHARE = 0.92;
+     with white filling the rest. FIT_SHARE is how much of the front its longer side covers:
+     1 runs edge to edge across the front, a smaller number leaves a white edge all round. */
+  var FIT_SHARE = 1;
   function drawCrop(g, it, x, y, size) {
     if (it.fit) {
       var box = size * window.SONA.crop.face / window.SONA.crop.photo * FIT_SHARE, k = box / Math.max(it.iw, it.ih);

@@ -732,7 +732,7 @@
     $('fix-fill').setAttribute('aria-pressed', String(!it.fit));
     $('fix-fit').setAttribute('aria-pressed', String(!!it.fit));
     $('fix-tools').hidden = !!it.fit;
-    $('fix-legend').textContent = it.fit ? 'The whole photo sits on the front of the magnet with a white border. Nothing is cut off.' : 'Drag to move. Everything inside the dashed square shows on the front of the magnet.';
+    $('fix-legend').textContent = it.fit ? 'The whole photo sits on the front of the magnet, edge to edge, with white filling the rest. Nothing is cut off.' : 'Drag to move. Everything inside the dashed square shows on the front of the magnet.';
   }
   function fixMode(fit) {
     var it = state.fixing && state.fixing.item; if (!it) return;
