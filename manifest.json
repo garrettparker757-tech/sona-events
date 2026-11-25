@@ -3,7 +3,7 @@
   "short_name": "Sona Magnets",
   "description": "Sona Magnets Co. event orders",
   "start_url": "/admin",
-  "scope": "/",
+  "scope": "/admin",
   "display": "standalone",
   "background_color": "#FDF8EE",
   "theme_color": "#5CA3A7",

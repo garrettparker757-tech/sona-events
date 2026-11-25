@@ -69,15 +69,24 @@
       if (jpeg) img = await decode(jpeg);
     }
     if (!img) return null;
-    var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, 2000 / Math.max(w, h));
+    /* Shrink once to the size that gets sent, keep that as a compressed picture, and hand the working
+       canvas straight back. Phones allow only so much canvas memory, and an order can hold many photos. */
+    var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, ((window.SONA && window.SONA.uploadPx) || 1600) / Math.max(w, h));
     var c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
     var g = c.getContext('2d');
     g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
     g.imageSmoothingQuality = 'high';
-    try { g.drawImage(img, 0, 0, c.width, c.height); } catch (err) { return null; }
+    try { g.drawImage(img, 0, 0, c.width, c.height); } catch (err) { c.width = c.height = 0; return null; }
     URL.revokeObjectURL(img.src);
-    return { img: c, iw: c.width, ih: c.height, small: Math.min(w, h) < 700 };
+    var blob = await new Promise(function (resolve) {
+      try { c.toBlob(resolve, 'image/jpeg', 0.88); } catch (err) { resolve(null); }
+    });
+    c.width = c.height = 0;
+    if (!blob) return null;
+    var pic = await decode(blob);
+    if (!pic) return null;
+    return { img: pic, iw: pic.naturalWidth, ih: pic.naturalHeight, small: Math.min(w, h) < 700, blob: blob };
   }
   function uuid() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();

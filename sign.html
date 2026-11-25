@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sona Magnets sign</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<meta name="apple-mobile-web-app-title" content="Sona Magnets">
+<meta name="application-name" content="Sona Magnets">
+<meta name="theme-color" content="#5CA3A7">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body class="signpage">
+<div class="signbar">
+  <div class="row">
+    <button class="btn primary" type="button" id="print">Print this sign</button>
+    <a class="btn small" href="/admin">Back to the staff page</a>
+  </div>
+  <p class="note" id="sign-tip">On an iPhone or iPad you can also tap the Share button, then Print. Use Letter paper at 100%.</p>
+  <p class="note bad" id="sign-msg" role="status"></p>
+</div>
+<div class="signfit" id="fit">
+<section class="poster" hidden id="poster-qr-sign" aria-hidden="true">
+  <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
+  <img class="poster-logo" src="/logo.png" alt="">
+  <p class="poster-title">Scan me for photo magnets!</p>
+  <p class="poster-sub" id="poster-qr-sub">Made in 10-15 minutes while you shop around.</p>
+  <div class="poster-qr" id="poster-qr"></div>
+  <ol class="poster-steps">
+    <li><b>1</b><span>Scan the code</span></li>
+    <li><b>2</b><span>Pick your photos</span></li>
+    <li><b>3</b><span id="poster-step3">Ready in 10-15 minutes</span></li>
+  </ol>
+  <p class="poster-event" id="poster-event"></p>
+  <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
+</section>
+
+<section class="poster" hidden id="poster-how" aria-hidden="true">
+  <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
+  <img class="poster-logo" src="/logo.png" alt="">
+  <p class="poster-title">Your photos, made into magnets</p>
+  <p class="poster-sub">Made right here in 10-15 minutes.</p>
+  <ol class="poster-rows">
+    <li><b>1</b><div><strong>Scan our code</strong><span>Point your phone camera at the QR code on our table.</span></div></li>
+    <li><b>2</b><div><strong>Pick your photos</strong><span>Each photo becomes a 2 inch square magnet.</span></div></li>
+    <li><b>3</b><div><strong>Pay at the table</strong><span>Tell us your name or order number.</span></div></li>
+    <li><b>4</b><div><strong>Pick up your magnets</strong><span>Shop around and come back in 10-15 minutes.</span></div></li>
+  </ol>
+  <p class="poster-event">No smartphone? We can help you order.</p>
+  <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
+</section>
+
+<section class="poster" hidden id="poster-prices" aria-hidden="true">
+  <i class="dot d1"></i><i class="dot d2"></i><i class="dot d3"></i><i class="dot d4"></i><i class="dot d5"></i><i class="dot d6"></i><i class="dot d7"></i><i class="dot d8"></i>
+  <img class="poster-logo" src="/logo.png" alt="">
+  <p class="poster-title">Custom photo magnets</p>
+  <p class="poster-sub">Your own photos on 2 inch magnets. Made in 10-15 minutes while you shop around.</p>
+  <ul class="poster-prices" id="poster-price-list"></ul>
+  <p class="poster-event">Mix and match any photos</p>
+  <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
+</section>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/config.js"></script>
+<script src="/common.js"></script>
+<script src="/sign.js"></script>
+</body>
+</html>

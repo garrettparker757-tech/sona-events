@@ -138,7 +138,7 @@
       note('photo-msg', 'Opening photo ' + (i + 1) + ' of ' + files.length + '. One moment.');
       var photo = await C.loadPhoto(files[i]);
       if (photo) {
-        state.items.push({ id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, zoom: 1, cx: 0.5, cy: 0.5, qty: 1, rev: 0, uploaded: null });
+        state.items.push({ id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, blob: photo.blob, zoom: 1, cx: 0.5, cy: 0.5, qty: 1, rev: 0, uploaded: null });
         room--;
         renderPhotos();
       } else { failed++; }
@@ -238,6 +238,7 @@
   /* The whole photo goes up (scaled to a sensible size) along with how it was framed,
      so staff can re-frame it later if the crop turns out wrong. */
   function renderBlob(it) {
+    if (it.blob) return Promise.resolve(it.blob);
     return new Promise(function (resolve) {
       var k = Math.min(1, CFG.uploadPx / Math.max(it.iw, it.ih)), c = document.createElement('canvas');
       c.width = Math.max(1, Math.round(it.iw * k)); c.height = Math.max(1, Math.round(it.ih * k));

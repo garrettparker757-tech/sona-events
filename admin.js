@@ -29,6 +29,11 @@
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
   function note(id, text, kind) { var n = $(id); n.textContent = text || ''; n.className = 'note' + (kind ? ' ' + kind : ''); }
   function guestUrl(ev) { return location.origin + '/e/' + ev.slug; }
+  function signUrl(ev) {
+    return '/sign.html?sign=qr&slug=' + encodeURIComponent(ev.slug) + '&name=' + encodeURIComponent(ev.name) + (ev.kind === 'private' ? '&kind=private' : '');
+  }
+  /* Database times carry more decimals than some phone browsers accept. */
+  function when(s) { var t = Date.parse(String(s || '').replace(/(\.\d{3})\d+/, '$1')); return isNaN(t) ? 0 : t; }
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
 
@@ -125,6 +130,18 @@
   $('back').addEventListener('click', async function () { discardPending(); state.event = null; await loadEvents(); show('view-events'); });
 
   /* ---------- deleting an event's photos and orders ---------- */
+  /* Print sheets saved for opening on a phone. olderThan 0 removes all of them. */
+  async function clearSheets(eventId, olderThan) {
+    for (var round = 0; round < 20; round++) {
+      var list = await sb.storage.from('sheets').list(eventId, { limit: 100 });
+      if (list.error) throw list.error;
+      var old = (list.data || []).filter(function (f) { return f.name && (!olderThan || Date.now() - when(f.created_at) > olderThan); });
+      if (!old.length) return;
+      var del = await sb.storage.from('sheets').remove(old.map(function (f) { return eventId + '/' + f.name; }));
+      if (del.error) throw del.error;
+      if ((list.data || []).length < 100) return;
+    }
+  }
   async function purgeEvent(ev, say) {
     say('Closing the event.');
     var closed = await sb.from('events').update({ status: 'closed' }).eq('id', ev.id).select().single();
@@ -144,6 +161,8 @@
     }
     var left = await sb.rpc('event_upload_paths', { p_event_id: ev.id });
     if (left.error || (left.data || []).length) throw new Error('PHOTOS_LEFT');
+    /* the saved print sheets have the photos on them too */
+    await clearSheets(ev.id, 0);
     var gone = await sb.from('orders').delete().eq('event_id', ev.id);
     if (gone.error) throw gone.error;
     return { removed: removed, event: closed.data };
@@ -197,7 +216,7 @@
       var li = el('li', 'card soft');
       var left = el('div');
       left.appendChild(el('h3', null, ev.name));
-      left.appendChild(el('p', 'note', 'Created ' + new Date(ev.created_at).toLocaleDateString() + ', up to ' + ev.max_magnets + ' magnets per order' + (ev.overlay_path ? ', with an overlay' : '')));
+      left.appendChild(el('p', 'note', 'Created ' + new Date(when(ev.created_at)).toLocaleDateString() + ', up to ' + ev.max_magnets + ' magnets per order' + (ev.overlay_path ? ', with an overlay' : '')));
       li.appendChild(left);
       var right = el('div', 'row');
       right.appendChild(el('span', 'chip ' + ev.status, cap(ev.status)));
@@ -257,13 +276,11 @@
     var ev = state.event;
     $('page-title').textContent = ev.name;
     $('sign-name').textContent = ev.name;
-    $('poster-event').textContent = ev.name;
+    $('sign-qr').href = signUrl(ev);
     $('set-name').value = ev.name; $('set-max').value = ev.max_magnets;
     $('set-welcome').value = ev.welcome || ''; $('set-contact').checked = !!ev.ask_contact;
     $('set-prices').checked = ev.show_prices !== false;
     var special = kindOf(ev) === 'private';
-    $('poster-qr-sub').textContent = special ? 'Pick them up before the end of the event.' : 'Made in 10-15 minutes while you shop around.';
-    $('poster-step3').textContent = special ? 'Pick up before you leave' : 'Ready in 10-15 minutes';
     Array.prototype.forEach.call(document.querySelectorAll('#view-event .market-only'), function (b) { b.hidden = special; });
     $('st-unpaid').parentNode.hidden = !priced(); $('st-collected').parentNode.hidden = !priced();
   }
@@ -295,8 +312,7 @@
     var qr = $('qr'); qr.replaceChildren();
     if (window.QRCode) new window.QRCode(qr, { text: url, width: 440, height: 440, correctLevel: window.QRCode.CorrectLevel.M });
     else qr.textContent = 'The QR code could not load. Reload the page.';
-    var pq = $('poster-qr'); pq.replaceChildren();
-    if (window.QRCode) new window.QRCode(pq, { text: url, width: 900, height: 900, correctLevel: window.QRCode.CorrectLevel.M });
+    clearSheets(ev.id, 24 * 3600 * 1000).catch(function () {});
     renderEventInfo(); renderStatus();
     $('overlay-fold').open = kindOf(ev) === 'private';
     loadOverlay(ev);
@@ -338,22 +354,6 @@
     try { await navigator.clipboard.writeText(guestUrl(state.event)); this.textContent = 'Copied'; }
     catch (err) { this.textContent = 'Copy failed'; }
     var b = this; setTimeout(function () { b.textContent = 'Copy link'; }, 1500);
-  });
-  /* Table signs: pick which poster shows on paper, then print. */
-  (function () {
-    var list = $('poster-price-list'), tiers = C.packs(Infinity);
-    var best = tiers.reduce(function (m, t) { return !m || t.price / t.qty < m.price / m.qty ? t : m; }, null);
-    tiers.forEach(function (t) {
-      var li = el('li', t === best && tiers.length > 1 ? 'best' : '');
-      li.appendChild(el('b', null, String(t.qty)));
-      li.appendChild(el('span', null, t.qty === 1 ? 'magnet' : 'magnets'));
-      li.appendChild(el('strong', null, C.money(t.price)));
-      if (t === best && tiers.length > 1) li.appendChild(el('em', null, 'Best value'));
-      list.appendChild(li);
-    });
-  })();
-  Array.prototype.forEach.call(document.querySelectorAll('[data-print]'), function (b) {
-    b.addEventListener('click', function () { document.body.setAttribute('data-print', b.getAttribute('data-print')); window.print(); });
   });
   $('settings-form').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -445,7 +445,7 @@
     return true;
   }
   function heldElsewhere(p) {
-    return !p.printed_at && p.claimed_at && p.claimed_by && p.claimed_by !== DEVICE && Date.now() - Date.parse(p.claimed_at) < HOLD_MS;
+    return !p.printed_at && p.claimed_at && p.claimed_by && p.claimed_by !== DEVICE && Date.now() - when(p.claimed_at) < HOLD_MS;
   }
   async function loadOrders() {
     var ev = state.event; if (!ev) return;
@@ -654,7 +654,7 @@
       var cost = o.paid_at && o.paid_amount != null ? Number(o.paid_amount) : C.priceFor(count);
       if (money && cost != null) meta.appendChild(el('strong', 'price', C.money(cost)));
       if (money) meta.appendChild(el('span', 'chip ' + (o.paid_at ? 'paid' : 'unpaid'), o.paid_at ? 'Paid' : 'Not paid'));
-      meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(o.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
+      meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(when(o.created_at)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
       var label = o.status === 'new' ? 'Waiting to print' : o.status === 'printed' ? 'Printed' : 'Picked up';
       var busyElsewhere = o.status === 'new' && o.order_photos.some(heldElsewhere);
       meta.appendChild(el('span', 'chip ' + (busyElsewhere ? 'held' : o.status), busyElsewhere ? 'Printing on another device' : label));
@@ -992,7 +992,7 @@
     }, state.event.name + '  |  ' + stamp);
   }
   var HINT_BEFORE = 'Opening or printing the PDF marks these magnets as printed, so they will not print twice.';
-  var HINT_AFTER = 'Marked as printed. Print at 100% (Actual size). If the print fails, print again from the PDF tab, or use the buttons on the order.';
+  var HINT_AFTER = 'Marked as printed. In the PDF tab tap Share, then Print, at 100% (Actual size). If the print fails, open the PDF again here, or use the buttons on the order.';
   function release(ids) {
     if (!ids || !ids.length) return Promise.resolve();
     return sb.rpc('release_photos', { p_ids: ids, p_device: DEVICE }).then(function () {}, function () {});
@@ -1013,6 +1013,8 @@
     else { rows = waitingRows(); if (mode === 'full') rows = fullSheetRows(rows, layout().per); }
     if (!rows.length) return;
     state.busy = true;
+    /* Open the new tab now, while the tap still counts, and load the sheet into it once it is built. */
+    var tab = openTab();
     /* let go of an unopened sheet before reserving again, in that order */
     var before = state.pending && !state.pending.marked ? state.pending.claimed : [];
     discardPending(true);
@@ -1028,42 +1030,70 @@
         claimed = (got.data || []).map(function (x) { return typeof x === 'string' ? x : (x && (x.id || x.claim_photos)); });
         if (claimed.length < need.length) {
           if (mode === 'order') {
-            release(claimed); state.busy = false;
+            release(claimed); state.busy = false; closeTab(tab);
             note('print-msg', 'Another device is printing order #' + order.order_no + ' right now, so it was not printed again here.', 'bad');
             loadOrders(); return;
           }
           rows = rows.filter(function (r) { return r.photo.printed_at || claimed.indexOf(r.photo.id) >= 0; });
           shared = true;
           if (!rows.length) {
-            state.busy = false;
+            state.busy = false; closeTab(tab);
             note('print-msg', 'Another device just took those magnets for its own sheet. Nothing was left to print here.', 'bad');
             loadOrders(); return;
           }
         }
       }
       var out = await buildPdf(rows), url = URL.createObjectURL(out.blob);
+      /* a normal web address opens in a new tab on every phone; the copy held in this page is the fallback */
+      var link = await saveSheet(out.blob), href = link || url, opened = false;
+      if (tab && !tab.closed) { try { tab.location.replace(href); opened = true; } catch (err) { opened = false; } }
       state.pending = { rows: rows, url: url, marked: false, claimed: claimed, claimedAt: Date.now(), file: pdfFile(out.blob) };
       /* From the home screen app the phone's own share sheet is the dependable way to reach Print. */
       var shareable = canSharePdf(state.pending.file);
       $('ready-share').hidden = !shareable;
       $('ready-open').className = 'btn' + (shareable && asApp() ? ' small' : ' primary');
       $('ready-share').className = 'btn' + (asApp() ? ' primary' : ' small');
-      $('ready-text').textContent = 'Ready: ' + (mode === 'order' ? 'order #' + order.order_no + ' for ' + order.guest_name + ', ' : '') +
+      $('ready-text').textContent = (opened ? 'Opened in a new tab: ' : 'Ready: ') + (mode === 'order' ? 'order #' + order.order_no + ' for ' + order.guest_name + ', ' : '') +
         plural(out.magnets, 'magnet') + ' on ' + plural(out.sheets, 'sheet') + '.' + (shared ? ' Another device took the rest for its own sheet.' : '');
-      $('ready-open').href = url; $('ready-open').textContent = 'Open PDF to print';
+      $('ready-open').href = href; $('ready-open').textContent = 'Open PDF to print';
       $('ready-save').href = url; $('ready-save').download = 'sona-sheets-' + Date.now() + '.pdf';
       $('ready-hint').textContent = HINT_BEFORE;
       $('ready-discard').hidden = false; $('ready-mark').hidden = true; $('ready-done').hidden = true;
       $('ready').hidden = false;
       note('print-msg', '');
-      renderOrders();
-      $('ready').scrollIntoView({ block: 'center', behavior: 'smooth' });
-      loadOrders();
+      if (opened) markPending(); else { renderOrders(); loadOrders(); }
     } catch (err) {
+      closeTab(tab);
       release(claimed);
       if (!lostSession(err)) note('print-msg', String(err && err.message) === 'OVERLAY' ? 'The overlay for this event could not load, so no sheet was made. Check the connection and try again.' : 'The PDF could not be built. Check the connection and try again.', 'bad');
     }
     state.busy = false;
+  }
+  function openTab() {
+    if (asApp()) return null;   /* the home screen app has no tabs: it shows the Open and Print buttons instead */
+    try {
+      var w = window.open('', '_blank');
+      if (!w) return null;
+      w.document.write('<!DOCTYPE html><title>Sona Magnets sheet</title><meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<body style="margin:0;padding:32px;font:600 20px system-ui,sans-serif;color:#1B1F3B;background:#FDF8EE">Building your sheet. One moment.' +
+        '<p id="slow" hidden style="font-weight:400">Taking a while? Close this tab, go back to the Sona Magnets tab and press Open PDF to print.</p>' +
+        '<script>setTimeout(function () { document.getElementById("slow").hidden = false; }, 12000);<\/script></body>');
+      w.document.close();
+      return w;
+    } catch (err) { return null; }
+  }
+  function closeTab(w) { try { if (w && !w.closed) w.close(); } catch (err) {} }
+  /* Saves the sheet where only staff can reach it and returns a link that works for 12 hours. */
+  function saveSheet(blob) {
+    var ev = state.event;
+    var work = (async function () {
+      var path = ev.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.pdf';
+      var up = await sb.storage.from('sheets').upload(path, blob, { contentType: 'application/pdf', upsert: false });
+      if (up.error) return null;
+      var signed = await sb.storage.from('sheets').createSignedUrl(path, 12 * 3600);
+      return signed.error || !signed.data ? null : signed.data.signedUrl;
+    })().catch(function () { return null; });
+    return Promise.race([work, new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 25000); })]);
   }
   async function markPending() {
     var pend = state.pending; if (!pend || pend.marked) return;

@@ -22,3 +22,5 @@
 --  * Two staff devices: order_photos.claimed_at / claimed_by reserve magnets for the sheet one device is
 --    printing (claim_photos / release_photos, a reservation lasts 5 minutes unless renewed). orders,
 --    order_photos and events are in the supabase_realtime publication so staff pages update at once.
+--  * Print sheets are saved to the private "sheets" bucket (PDF only, staff only) and opened through a
+--    link that lasts 12 hours, so a phone can open them in a new tab. They are removed with the photos.
