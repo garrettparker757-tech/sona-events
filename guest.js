@@ -45,6 +45,14 @@
   }
 
   /* ---------- step 1: photos ---------- */
+  /* Only a photo that is clearly not square loses anything to the square crop, so only those get the one-tap choice. */
+  function notSquare(it) { return Math.max(it.iw, it.ih) / Math.min(it.iw, it.ih) >= 1.1; }
+  function fitButton(it, idx, after) {
+    var b = el('button', 'btn small', it.fit ? 'Fill the magnet' : 'Fit whole photo'); b.type = 'button';
+    b.setAttribute('aria-label', (it.fit ? 'Fill the magnet with photo ' : 'Fit the whole of photo ') + (idx + 1));
+    b.addEventListener('click', function () { it.fit = !it.fit; after(); });
+    return b;
+  }
   function renderPhotos() {
     var ul = $('photos'), left = remaining(), max = state.event.max_magnets, n = total();
     ul.replaceChildren();
@@ -85,6 +93,7 @@
       var adjust = el('button', 'btn small', 'Adjust photo'); adjust.type = 'button';
       adjust.addEventListener('click', function () { openEditor(it); });
       row.appendChild(adjust);
+      if (notSquare(it)) row.appendChild(fitButton(it, idx, renderPhotos));
       var remove = el('button', 'btn small', 'Remove'); remove.type = 'button';
       remove.setAttribute('aria-label', 'Remove photo ' + (idx + 1));
       remove.addEventListener('click', function () { state.items = state.items.filter(function (x) { return x !== it; }); note('photo-msg', ''); renderPhotos(); });
@@ -246,6 +255,7 @@
       var fix = el('button', 'btn small', 'Adjust'); fix.type = 'button';
       fix.addEventListener('click', function () { state.returnToCheck = true; openEditor(it); });
       li.appendChild(fix);
+      if (notSquare(it)) li.appendChild(fitButton(it, idx, goCheck));
       ul.appendChild(li);
     });
     $('summary').textContent = plural(n, 'magnet') + ' for ' + name;
