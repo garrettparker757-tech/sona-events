@@ -743,7 +743,14 @@
   function closeFix() { state.fixing = null; $('fix').hidden = true; }
   async function openFix(order, photo) {
     note('fix-msg', '');
-    $('fix-who').textContent = 'Order #' + order.order_no + ' for ' + order.guest_name + (photo.printed_at ? '. Already printed, so print the order again after saving.' : '');
+    var all = order.order_photos, at = all.indexOf(photo);
+    $('fix-who').textContent = 'Order #' + order.order_no + ' for ' + order.guest_name + (all.length > 1 ? ', photo ' + (at + 1) + ' of ' + all.length : '') + '.' +
+      (photo.printed_at ? ' Already printed, so print the order again after saving.' : '') + ' Each photo is stored the moment you save it.';
+    /* going through a big order: save this one and open the next without leaving the window */
+    var more = at >= 0 && at < all.length - 1;
+    $('fix-next').hidden = !more;
+    $('fix-save').textContent = all.length > 1 ? 'Save and close' : 'Save';
+    $('fix-save').className = 'btn' + (more ? ' small' : ' primary');
     try {
       var pic = await photoPic(photo.path), f = framing(photo);
       state.fixing = { order: order, photo: photo, item: { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit } };
@@ -772,16 +779,28 @@
   $('fix-cancel').addEventListener('click', closeFix);
   $('fix').addEventListener('click', function (e) { if (e.target === this) closeFix(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && state.fixing) closeFix(); });
-  $('fix-save').addEventListener('click', async function () {
-    var fx = state.fixing; if (!fx) return;
-    var btn = this, it = fx.item; btn.disabled = true; note('fix-msg', 'Saving.');
+  async function saveFix(goNext) {
+    var fx = state.fixing; if (!fx || fx.saving) return;
+    var it = fx.item; fx.saving = true;
+    $('fix-save').disabled = true; $('fix-next').disabled = true; note('fix-msg', 'Saving.');
     var r = await sb.from('order_photos').update({ crop_zoom: it.zoom, crop_x: it.cx, crop_y: it.cy, crop_fit: !!it.fit }).eq('id', fx.photo.id);
-    btn.disabled = false;
+    fx.saving = false; $('fix-save').disabled = false; $('fix-next').disabled = false;
     if (lostSession(r.error)) { closeFix(); return; }
-    if (r.error) { note('fix-msg', 'That did not save. Check the connection and try again.', 'bad'); return; }
-    closeFix(); discardPending();
+    if (r.error) { note('fix-msg', 'That did not save, so it is still open here. Check the connection and press save again.', 'bad'); return; }
+    var orderId = fx.order.id, at = fx.order.order_photos.indexOf(fx.photo);
+    discardPending();
+    if (!goNext) closeFix();
     await loadOrders();
-  });
+    if (!goNext) return;
+    /* open the photo after the one just saved, from the freshly loaded order */
+    var order = state.orders.filter(function (o) { return o.id === orderId; })[0];
+    var next = order && order.order_photos[at + 1];
+    if (!next) { closeFix(); return; }
+    await openFix(order, next);
+    note('fix-msg', 'Saved. Now photo ' + (at + 2) + ' of ' + order.order_photos.length + '.', 'good');
+  }
+  $('fix-save').addEventListener('click', function () { saveFix(false); });
+  $('fix-next').addEventListener('click', function () { saveFix(true); });
 
   /* ---------- overlay: a picture printed on top of every magnet ---------- */
   var ov = null, ovSample = null;   /* ov is the copy being edited; state.overlay is the saved one */

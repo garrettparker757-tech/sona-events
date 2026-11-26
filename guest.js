@@ -44,6 +44,118 @@
     } catch (err) {}
   }
 
+  /* ---------- an unfinished order is kept on this device ----------
+     Photos and every adjustment are written to the browser's own storage as you go, so a closed tab,
+     a locked phone or a dead battery does not lose the work. It is cleared once the order is sent. */
+  var draft = { db: null, timer: null, ok: false, failed: false, restored: 0, KEEP_MS: 48 * 3600 * 1000 };
+  function draftOpen() {
+    return new Promise(function (resolve) {
+      try {
+        if (!window.indexedDB) return resolve(null);
+        var req = indexedDB.open('sona-drafts', 1);
+        req.onupgradeneeded = function () {
+          var db = req.result;
+          if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos');
+          if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
+        };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { resolve(null); };
+        req.onblocked = function () { resolve(null); };
+      } catch (err) { resolve(null); }
+    });
+  }
+  function draftTx(store, mode, work) {
+    return new Promise(function (resolve) {
+      if (!draft.db) return resolve(null);
+      try {
+        var tx = draft.db.transaction(store, mode), out = work(tx.objectStore(store));
+        tx.oncomplete = function () { resolve({ value: out ? out.result : undefined }); };
+        tx.onerror = tx.onabort = function () { resolve(null); };
+      } catch (err) { resolve(null); }
+    });
+  }
+  function photoKey(id) { return slug + '|' + id; }
+  function draftPutPhoto(it) { return draftTx('photos', 'readwrite', function (s) { return s.put(it.blob, photoKey(it.id)); }); }
+  function draftDropPhoto(id) { return draftTx('photos', 'readwrite', function (s) { return s.delete(photoKey(id)); }); }
+  function draftMeta() {
+    return {
+      at: Date.now(), nextId: state.nextId, orderId: state.orderId,
+      name: $('guest-name').value, contact: $('guest-contact').value, note: $('guest-note').value,
+      items: state.items.filter(function (it) { return it.stored; }).map(function (it) {
+        return { id: it.id, iw: it.iw, ih: it.ih, small: it.small, fit: !!it.fit, zoom: it.zoom, cx: it.cx, cy: it.cy, qty: it.qty, uploaded: it.uploaded };
+      })
+    };
+  }
+  async function draftWrite() {
+    clearTimeout(draft.timer); draft.timer = null;
+    if (!draft.db || !state.event) return;
+    var meta = draftMeta();
+    var done = meta.items.length
+      ? await draftTx('meta', 'readwrite', function (s) { return s.put(meta, slug); })
+      : await draftTx('meta', 'readwrite', function (s) { return s.delete(slug); });
+    draft.ok = !!done && meta.items.length === state.items.length;
+    draft.failed = !draft.ok && state.items.length > 0;
+    draftNote();
+  }
+  /* called after anything changes; writes a moment later so dragging does not write on every movement */
+  function saveDraft() {
+    if (!draft.db) return;
+    clearTimeout(draft.timer);
+    draft.timer = setTimeout(draftWrite, 350);
+  }
+  function draftNote() {
+    var has = state.items.length > 0, n = $('draft-msg');
+    n.hidden = !(has && draft.db);
+    $('draft-clear').hidden = !(has && draft.restored);
+    if (!has || !draft.db) return;
+    n.className = 'note' + (draft.ok ? ' good' : draft.failed ? ' bad' : '');
+    n.textContent = draft.ok
+      ? (draft.restored ? 'Welcome back. Your ' + plural(draft.restored, 'photo') + ' and adjustments were kept. ' : '') + 'Your progress is saved on this device. If this page closes, open it again and it will all be here.'
+      : draft.failed ? 'This device could not save your progress, so please finish and send this order without closing the page.'
+      : 'Saving your progress on this device.';
+  }
+  async function draftClear() {
+    clearTimeout(draft.timer); draft.timer = null; draft.restored = 0; draft.ok = false; draft.failed = false;
+    if (!draft.db) return;
+    await draftTx('meta', 'readwrite', function (s) { return s.delete(slug); });
+    await draftTx('photos', 'readwrite', function (s) { return s.delete(IDBKeyRange.bound(slug + '|', slug + '|\uffff')); });
+  }
+  function draftImage(blob) {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () { resolve(img.naturalWidth ? img : null); };
+      img.onerror = function () { resolve(null); };
+      try { img.src = URL.createObjectURL(blob); } catch (err) { resolve(null); }
+    });
+  }
+  async function draftRestore() {
+    draft.db = await draftOpen();
+    if (!draft.db) return;
+    var got = await draftTx('meta', 'readonly', function (s) { return s.get(slug); }), meta = got && got.value;
+    if (!meta || !meta.items || !meta.items.length) return;
+    if (Date.now() - meta.at > draft.KEEP_MS) { await draftClear(); return; }
+    var room = state.event.max_magnets;
+    for (var i = 0; i < meta.items.length; i++) {
+      var m = meta.items[i];
+      var kept = await draftTx('photos', 'readonly', function (s) { return s.get(photoKey(m.id)); }), blob = kept && kept.value;
+      if (!blob || room < 1) continue;
+      var img = await draftImage(blob);
+      if (!img) continue;
+      var qty = Math.max(1, Math.min(m.qty || 1, room)); room -= qty;
+      state.items.push({ id: m.id, img: img, iw: img.naturalWidth, ih: img.naturalHeight, small: !!m.small, blob: blob, stored: true,
+        fit: !!m.fit, zoom: m.zoom || 1, cx: m.cx == null ? 0.5 : m.cx, cy: m.cy == null ? 0.5 : m.cy, qty: qty, rev: 0, uploaded: m.uploaded || null });
+      C.normalize(state.items[state.items.length - 1]);
+    }
+    if (!state.items.length) { await draftClear(); return; }
+    state.nextId = Math.max(meta.nextId || 1, state.items.reduce(function (n, it) { return Math.max(n, it.id + 1); }, 1));
+    state.orderId = meta.orderId || null;
+    $('guest-name').value = meta.name || ''; $('guest-contact').value = meta.contact || '';
+    if (meta.note) { $('guest-note').value = meta.note; $('note-wrap').hidden = false; $('note-open').hidden = true; }
+    draft.restored = state.items.length; draft.ok = true;
+  }
+  document.addEventListener('visibilitychange', function () { if (document.hidden && draft.timer) draftWrite(); });
+  window.addEventListener('pagehide', function () { if (draft.timer) draftWrite(); });
+
   /* ---------- step 1: photos ---------- */
   /* Only a photo that is clearly not square loses anything to the square crop, so only those get the one-tap choice. */
   function notSquare(it) { return Math.max(it.iw, it.ih) / Math.min(it.iw, it.ih) >= 1.1; }
@@ -96,7 +208,7 @@
       if (notSquare(it)) row.appendChild(fitButton(it, idx, renderPhotos));
       var remove = el('button', 'btn small', 'Remove'); remove.type = 'button';
       remove.setAttribute('aria-label', 'Remove photo ' + (idx + 1));
-      remove.addEventListener('click', function () { state.items = state.items.filter(function (x) { return x !== it; }); note('photo-msg', ''); renderPhotos(); });
+      remove.addEventListener('click', function () { state.items = state.items.filter(function (x) { return x !== it; }); draftDropPhoto(it.id); note('photo-msg', ''); renderPhotos(); });
       row.appendChild(remove);
       side.appendChild(row);
       if (it.small) side.appendChild(el('p', 'tip', 'This photo is small, so it may print a little blurry.'));
@@ -123,6 +235,7 @@
     $('file-input').disabled = left <= 0;
     if (left <= 0 && state.items.length) add.textContent = 'That is the most for one order';
     $('photos-bar').hidden = !state.items.length;
+    draftNote(); saveDraft();
   }
   /* Magnets are sold in packs. When the count is in between, say exactly what to do. */
   function listSizes(sizes) {
@@ -147,7 +260,9 @@
       note('photo-msg', 'Opening photo ' + (i + 1) + ' of ' + files.length + '. One moment.');
       var photo = await C.loadPhoto(files[i]);
       if (photo) {
-        state.items.push({ id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, blob: photo.blob, fit: false, zoom: 1, cx: 0.5, cy: 0.5, qty: 1, rev: 0, uploaded: null });
+        var added = { id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, blob: photo.blob, fit: false, zoom: 1, cx: 0.5, cy: 0.5, qty: 1, rev: 0, uploaded: null };
+        state.items.push(added);
+        added.stored = !!(await draftPutPhoto(added));
         room--;
         renderPhotos();
       } else { failed++; }
@@ -161,7 +276,7 @@
   }
 
   /* ---------- adjust one photo ---------- */
-  var editor = C.attachEditor($('editor-canvas'), function () { return state.editing; }, function () { syncZoom(); }, function () { return state.overlay; });
+  var editor = C.attachEditor($('editor-canvas'), function () { return state.editing; }, function () { syncZoom(); saveDraft(); }, function () { return state.overlay; });
   /* Fill crops the photo to the square. Fit keeps the whole photo and puts white around it. */
   function syncMode() {
     var it = state.editing; if (!it) return;
@@ -172,7 +287,7 @@
   }
   function setMode(fit) {
     var it = state.editing; if (!it) return;
-    it.fit = fit; editor.draw(); syncMode(); syncZoom();
+    it.fit = fit; editor.draw(); syncMode(); syncZoom(); saveDraft();
   }
   $('mode-fill').addEventListener('click', function () { setMode(false); });
   $('mode-fit').addEventListener('click', function () { setMode(true); });
@@ -185,7 +300,7 @@
   function zoomBy(step) {
     var it = state.editing; if (!it) return;
     it.zoom = C.clamp(Math.round((it.zoom + step) * 100) / 100, 1, 3);
-    C.normalize(it); editor.draw(); syncZoom();
+    C.normalize(it); editor.draw(); syncZoom(); saveDraft();
   }
   function openEditor(it) {
     state.editing = it;
@@ -200,7 +315,7 @@
   $('zoom').addEventListener('input', function () {
     var it = state.editing; if (!it) return;
     it.zoom = C.clamp(parseFloat(this.value) || 1, 1, 3);
-    C.normalize(it); editor.draw();
+    C.normalize(it); editor.draw(); saveDraft();
     $('zoom-out').disabled = it.zoom <= 1.001; $('zoom-in').disabled = it.zoom >= 2.999;
   });
   $('zoom-in').addEventListener('click', function () { zoomBy(0.25); });
@@ -228,6 +343,7 @@
   /* ---------- step 3: one last look ---------- */
   function goCheck(e) {
     if (e) e.preventDefault();
+    saveDraft();
     var name = $('guest-name').value.trim();
     if (!name) { note('form-msg', 'Please type your name so we know who to call.', 'bad'); $('guest-name').focus(); return; }
     if (!state.items.length || (state.event.show_prices !== false && packHint(total(), state.event.max_magnets))) { show('view-photos', 'photos-title'); renderPhotos(); return; }
@@ -322,6 +438,7 @@
         var path = state.event.id + '/' + state.orderId + '/' + it.id + '.jpg';
         await uploadOne(it, path);
         it.uploaded = path;
+        saveDraft();
       }
       progress('Almost done.', state.items.length, steps);
       var res = null;
@@ -347,6 +464,7 @@
         : 'They will be ready in 10-15 minutes, so feel free to shop around. Then come back to the table and tell us your name or order number.');
       try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, at: Date.now() })); } catch (err) {}
       state.items = []; state.orderId = null;
+      await draftClear();
       $('last-order').hidden = true;
       $('sending').hidden = true;
       show('view-done');
@@ -363,7 +481,15 @@
   $('check-back').addEventListener('click', function () { show('view-photos', 'photos-title'); });
   $('file-input').addEventListener('change', function () { addFiles(this.files); this.value = ''; });
   $('to-name').addEventListener('click', goName);
-  $('guest-name').addEventListener('input', function () { note('form-msg', ''); });
+  $('guest-name').addEventListener('input', function () { note('form-msg', ''); saveDraft(); });
+  $('guest-contact').addEventListener('input', saveDraft);
+  $('guest-note').addEventListener('input', saveDraft);
+  $('draft-clear').addEventListener('click', async function () {
+    state.items = []; state.orderId = null; state.nextId = 1;
+    $('guest-name').value = ''; $('guest-contact').value = ''; $('guest-note').value = '';
+    await draftClear();
+    note('photo-msg', ''); renderPhotos();
+  });
   $('note-open').addEventListener('click', function () { this.hidden = true; $('note-wrap').hidden = false; $('guest-note').focus(); });
   $('back-photos').addEventListener('click', function () { show('view-photos', 'photos-title'); });
   $('again').addEventListener('click', function () { $('guest-name').value = ''; $('guest-note').value = ''; $('note-wrap').hidden = true; $('note-open').hidden = false; renderPhotos(); showLastOrder(); show('view-photos', 'photos-title'); });
@@ -394,6 +520,7 @@
       var pic = await C.loadOverlayImage(C.overlayUrl(ev.overlay_path));
       if (pic) state.overlay = { img: pic.img, iw: pic.iw, ih: pic.ih, scale: Number(ev.overlay_scale) || 1, cx: ev.overlay_x == null ? 0.5 : Number(ev.overlay_x), cy: ev.overlay_y == null ? 0.5 : Number(ev.overlay_y) };
     }
+    await draftRestore();
     renderPhotos();
     showLastOrder();
     show('view-photos');
