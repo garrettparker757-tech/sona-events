@@ -18,12 +18,38 @@
      with white filling the rest. FIT_SHARE is how much of the front its longer side covers:
      1 runs edge to edge across the front, a smaller number leaves a white edge all round. */
   var FIT_SHARE = 1;
+  /* A fitted photo can be zoomed in a little (it.fz): the white bars shrink and the long ends run past
+     the edge of the front. At fitMax the shorter side reaches the edge and the bars are gone.
+     it.fx / it.fy say which point of the photo sits at the centre of the front. */
+  function fitMax(it) { return clamp(Math.max(it.iw, it.ih) / Math.min(it.iw, it.ih), 1, 3); }
+  /* width and height of the fitted photo, counted in fronts (1 = as wide as the front of the magnet) */
+  function fitSize(it) {
+    var z = clamp(Number(it.fz) || 1, 1, fitMax(it)) * FIT_SHARE, long = Math.max(it.iw, it.ih);
+    return { w: it.iw / long * z, h: it.ih / long * z };
+  }
+  function normalizeFit(it) {
+    it.fz = clamp(Number(it.fz) || 1, 1, fitMax(it));
+    var s = fitSize(it);
+    it.fx = s.w > 1 ? clamp(it.fx == null ? 0.5 : Number(it.fx), 0.5 / s.w, 1 - 0.5 / s.w) : 0.5;
+    it.fy = s.h > 1 ? clamp(it.fy == null ? 0.5 : Number(it.fy), 0.5 / s.h, 1 - 0.5 / s.h) : 0.5;
+  }
+  /* One zoom for the adjust windows, whichever way the photo sits. */
+  function zoomMax(it) { return it.fit ? fitMax(it) : 3; }
+  function getZoom(it) { return it.fit ? clamp(Number(it.fz) || 1, 1, fitMax(it)) : it.zoom; }
+  function setZoom(it, z) {
+    if (it.fit) { it.fz = clamp(z, 1, fitMax(it)); normalizeFit(it); }
+    else { it.zoom = clamp(z, 1, 3); normalize(it); }
+  }
   function drawCrop(g, it, x, y, size) {
     if (it.fit) {
-      var box = size * window.SONA.crop.face / window.SONA.crop.photo * FIT_SHARE, k = box / Math.max(it.iw, it.ih);
-      var w = it.iw * k, h = it.ih * k;
+      var F = size * window.SONA.crop.face / window.SONA.crop.photo, s = fitSize(it), w = s.w * F, h = s.h * F;
+      var fx = s.w > 1 ? clamp(it.fx == null ? 0.5 : Number(it.fx), 0.5 / s.w, 1 - 0.5 / s.w) : 0.5;
+      var fy = s.h > 1 ? clamp(it.fy == null ? 0.5 : Number(it.fy), 0.5 / s.h, 1 - 0.5 / s.h) : 0.5;
+      g.save();
       g.fillStyle = '#fff'; g.fillRect(x, y, size, size);
-      g.drawImage(it.img, x + (size - w) / 2, y + (size - h) / 2, w, h);
+      g.beginPath(); g.rect(x, y, size, size); g.clip();
+      g.drawImage(it.img, x + size / 2 - fx * w, y + size / 2 - fy * h, w, h);
+      g.restore();
       return;
     }
     var r = cropRect(it);
@@ -163,6 +189,14 @@
       if (getOverlay) drawOverlay(g, getOverlay(), 0, 0, n);
       drawGuides(g, n);
     }
+    /* a fitted photo: slide it by a share of its own drawn size, measured on screen */
+    function fitMoveBy(it, dxScreen, dyScreen) {
+      var F = canvas.getBoundingClientRect().width * window.SONA.crop.face / window.SONA.crop.photo, s = fitSize(it);
+      if (!F) return;
+      it.fx = (it.fx == null ? 0.5 : it.fx) - dxScreen / (s.w * F);
+      it.fy = (it.fy == null ? 0.5 : it.fy) - dyScreen / (s.h * F);
+      normalizeFit(it);
+    }
     function moveBy(it, dx, dy) {
       var r = cropRect(it);
       it.cx = (r.sx + r.s / 2 + dx) / it.iw;
@@ -176,16 +210,19 @@
     });
     canvas.addEventListener('pointermove', function (e) {
       if (!pts.has(e.pointerId)) return;
-      var it = getItem(); if (!it || it.fit) return;   /* a fitted photo is already whole and centred */
+      var it = getItem(); if (!it) return;
       var prev = pts.get(e.pointerId), cur = { x: e.clientX, y: e.clientY };
       pts.set(e.pointerId, cur);
       if (pts.size === 1) {
-        var k = cropRect(it).s / canvas.getBoundingClientRect().width;
-        moveBy(it, -(cur.x - prev.x) * k, -(cur.y - prev.y) * k);
+        if (it.fit) fitMoveBy(it, cur.x - prev.x, cur.y - prev.y);
+        else {
+          var k = cropRect(it).s / canvas.getBoundingClientRect().width;
+          moveBy(it, -(cur.x - prev.x) * k, -(cur.y - prev.y) * k);
+        }
       } else if (pts.size === 2) {
         var two = Array.from(pts.values());
         var dist = Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y);
-        if (lastDist > 0 && dist > 0) { it.zoom = clamp(it.zoom * dist / lastDist, 1, 3); normalize(it); }
+        if (lastDist > 0 && dist > 0) setZoom(it, getZoom(it) * dist / lastDist);
         lastDist = dist;
       }
       draw(); onChange(it);
@@ -194,11 +231,13 @@
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
     canvas.addEventListener('keydown', function (e) {
-      var it = getItem(); if (!it || it.fit) return;
-      var step = cropRect(it).s / 40;
+      var it = getItem(); if (!it) return;
+      var step = it.fit ? canvas.getBoundingClientRect().width / 40 : cropRect(it).s / 40;
       var d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (!d) return;
-      e.preventDefault(); moveBy(it, d[0], d[1]); draw(); onChange(it);
+      e.preventDefault();
+      if (it.fit) fitMoveBy(it, -d[0], -d[1]); else moveBy(it, d[0], d[1]);
+      draw(); onChange(it);
     });
     return { draw: draw };
   }
@@ -231,5 +270,5 @@
     return isPack && next - now <= 5 ? { qty: n + 1, extra: next - now, price: next } : null;
   }
 
-  window.SonaCommon = { drawGuides: drawGuides, overlayRect: overlayRect, drawOverlay: drawOverlay, loadOverlayImage: loadOverlayImage, overlayUrl: overlayUrl, clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
+  window.SonaCommon = { fitMax: fitMax, normalizeFit: normalizeFit, zoomMax: zoomMax, getZoom: getZoom, setZoom: setZoom, drawGuides: drawGuides, overlayRect: overlayRect, drawOverlay: drawOverlay, loadOverlayImage: loadOverlayImage, overlayUrl: overlayUrl, clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
 })();

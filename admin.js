@@ -452,7 +452,7 @@
     var seq = ++state.loadSeq;
     var both = await Promise.all([
       sb.from('orders')
-        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, claimed_at, claimed_by)')
+        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, fit_zoom, fit_x, fit_y, claimed_at, claimed_by)')
         .eq('event_id', ev.id).order('order_no', { ascending: true }),
       sb.from('events').select('*').eq('id', ev.id).maybeSingle()
     ]);
@@ -521,13 +521,14 @@
   }
   /* How a photo is framed: the guest's choice, or the staff fix saved over it. */
   function framing(p) {
-    return { zoom: Number(p.crop_zoom) || 1, cx: p.crop_x == null ? 0.5 : Number(p.crop_x), cy: p.crop_y == null ? 0.5 : Number(p.crop_y), fit: p.crop_fit === true };
+    return { zoom: Number(p.crop_zoom) || 1, cx: p.crop_x == null ? 0.5 : Number(p.crop_x), cy: p.crop_y == null ? 0.5 : Number(p.crop_y), fit: p.crop_fit === true,
+      fz: Number(p.fit_zoom) || 1, fx: p.fit_x == null ? 0.5 : Number(p.fit_x), fy: p.fit_y == null ? 0.5 : Number(p.fit_y) };
   }
   function drawFramed(canvas, pic, f) {
     var g = canvas.getContext('2d');
     g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
     g.imageSmoothingQuality = 'high';
-    C.drawCrop(g, { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit }, 0, 0, canvas.width);
+    C.drawCrop(g, { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit, fz: f.fz, fx: f.fx, fy: f.fy }, 0, 0, canvas.width);
     C.drawOverlay(g, state.overlay, 0, 0, canvas.width);
   }
   function waitingRows() {
@@ -727,12 +728,16 @@
   var fixEditor = C.attachEditor($('fix-canvas'), function () { return state.fixing ? state.fixing.item : null; }, function () { fixButtons(); }, function () { return state.overlay; });
   function fixButtons() {
     var it = state.fixing && state.fixing.item; if (!it) return;
-    $('fix-out').disabled = it.zoom <= 1.001; $('fix-in').disabled = it.zoom >= 2.999;
-    $('fix-zoom').value = it.zoom;
+    var z = C.getZoom(it), max = C.zoomMax(it);
+    $('fix-out').disabled = z <= 1.001; $('fix-in').disabled = z >= max - 0.001;
+    $('fix-zoom').max = max; $('fix-zoom').value = z;
     $('fix-fill').setAttribute('aria-pressed', String(!it.fit));
     $('fix-fit').setAttribute('aria-pressed', String(!!it.fit));
-    $('fix-tools').hidden = !!it.fit;
-    $('fix-legend').textContent = it.fit ? 'The whole photo sits on the front of the magnet, edge to edge, with white filling the rest. Nothing is cut off.' : 'Drag to move. Everything inside the dashed square shows on the front of the magnet.';
+    /* a fitted photo zooms too, as far as the point where its white bars are gone */
+    $('fix-tools').hidden = !!it.fit && C.fitMax(it) < 1.03;
+    $('fix-legend').textContent = !it.fit ? 'Drag to move. Everything inside the dashed square shows on the front of the magnet.'
+      : z <= 1.005 ? 'The whole photo sits on the front of the magnet with white filling the rest. Nothing is cut off. Zoom in a little to shrink the white.'
+      : 'Zoomed in: the white is smaller and a little is trimmed off the ends. Drag to choose which part shows.';
   }
   function fixMode(fit) {
     var it = state.fixing && state.fixing.item; if (!it) return;
@@ -753,28 +758,31 @@
     $('fix-save').className = 'btn' + (more ? ' small' : ' primary');
     try {
       var pic = await photoPic(photo.path), f = framing(photo);
-      state.fixing = { order: order, photo: photo, item: { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit } };
-      C.normalize(state.fixing.item);
+      state.fixing = { order: order, photo: photo, item: { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit, fz: f.fz, fx: f.fx, fy: f.fy } };
+      C.normalize(state.fixing.item); C.normalizeFit(state.fixing.item);
       $('fix').hidden = false;
       fixEditor.draw(); fixButtons();
     } catch (err) { note('queue-msg', 'That photo could not be opened. Check the connection and try again.', 'bad'); }
   }
-  function fixZoom(step) {
+  /* dir is +1 or -1. A fitted photo has a short zoom range, so it moves in quarters of that range. */
+  function fixZoom(dir) {
     var it = state.fixing && state.fixing.item; if (!it) return;
-    it.zoom = C.clamp(Math.round((it.zoom + step) * 100) / 100, 1, 3);
-    C.normalize(it); fixEditor.draw(); fixButtons();
+    var step = it.fit ? Math.max(0.02, (C.zoomMax(it) - 1) / 4) : 0.25;
+    C.setZoom(it, Math.round((C.getZoom(it) + dir * step) * 100) / 100);
+    fixEditor.draw(); fixButtons();
   }
   $('fix-zoom').addEventListener('input', function () {
     var it = state.fixing && state.fixing.item; if (!it) return;
-    it.zoom = C.clamp(parseFloat(this.value) || 1, 1, 3);
-    C.normalize(it); fixEditor.draw();
-    $('fix-out').disabled = it.zoom <= 1.001; $('fix-in').disabled = it.zoom >= 2.999;
+    C.setZoom(it, parseFloat(this.value) || 1);
+    fixEditor.draw(); fixButtons();
   });
-  $('fix-in').addEventListener('click', function () { fixZoom(0.25); });
-  $('fix-out').addEventListener('click', function () { fixZoom(-0.25); });
+  $('fix-in').addEventListener('click', function () { fixZoom(1); });
+  $('fix-out').addEventListener('click', function () { fixZoom(-1); });
   $('fix-reset').addEventListener('click', function () {
     var it = state.fixing && state.fixing.item; if (!it) return;
-    it.zoom = 1; it.cx = 0.5; it.cy = 0.5; C.normalize(it); fixEditor.draw(); fixButtons();
+    if (it.fit) { it.fz = 1; it.fx = 0.5; it.fy = 0.5; C.normalizeFit(it); }
+    else { it.zoom = 1; it.cx = 0.5; it.cy = 0.5; C.normalize(it); }
+    fixEditor.draw(); fixButtons();
   });
   $('fix-cancel').addEventListener('click', closeFix);
   $('fix').addEventListener('click', function (e) { if (e.target === this) closeFix(); });
@@ -783,7 +791,7 @@
     var fx = state.fixing; if (!fx || fx.saving) return;
     var it = fx.item; fx.saving = true;
     $('fix-save').disabled = true; $('fix-next').disabled = true; note('fix-msg', 'Saving.');
-    var r = await sb.from('order_photos').update({ crop_zoom: it.zoom, crop_x: it.cx, crop_y: it.cy, crop_fit: !!it.fit }).eq('id', fx.photo.id);
+    var r = await sb.from('order_photos').update({ crop_zoom: it.zoom, crop_x: it.cx, crop_y: it.cy, crop_fit: !!it.fit, fit_zoom: it.fz || 1, fit_x: it.fx == null ? 0.5 : it.fx, fit_y: it.fy == null ? 0.5 : it.fy }).eq('id', fx.photo.id);
     fx.saving = false; $('fix-save').disabled = false; $('fix-next').disabled = false;
     if (lostSession(r.error)) { closeFix(); return; }
     if (r.error) { note('fix-msg', 'That did not save, so it is still open here. Check the connection and press save again.', 'bad'); return; }

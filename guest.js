@@ -82,7 +82,7 @@
       at: Date.now(), nextId: state.nextId, orderId: state.orderId,
       name: $('guest-name').value, contact: $('guest-contact').value, note: $('guest-note').value,
       items: state.items.filter(function (it) { return it.stored; }).map(function (it) {
-        return { id: it.id, iw: it.iw, ih: it.ih, small: it.small, fit: !!it.fit, zoom: it.zoom, cx: it.cx, cy: it.cy, qty: it.qty, uploaded: it.uploaded };
+        return { id: it.id, iw: it.iw, ih: it.ih, small: it.small, fit: !!it.fit, zoom: it.zoom, cx: it.cx, cy: it.cy, fz: it.fz, fx: it.fx, fy: it.fy, qty: it.qty, uploaded: it.uploaded };
       })
     };
   }
@@ -143,8 +143,9 @@
       if (!img) continue;
       var qty = Math.max(1, Math.min(m.qty || 1, room)); room -= qty;
       state.items.push({ id: m.id, img: img, iw: img.naturalWidth, ih: img.naturalHeight, small: !!m.small, blob: blob, stored: true,
-        fit: !!m.fit, zoom: m.zoom || 1, cx: m.cx == null ? 0.5 : m.cx, cy: m.cy == null ? 0.5 : m.cy, qty: qty, rev: 0, uploaded: m.uploaded || null });
-      C.normalize(state.items[state.items.length - 1]);
+        fit: !!m.fit, zoom: m.zoom || 1, cx: m.cx == null ? 0.5 : m.cx, cy: m.cy == null ? 0.5 : m.cy,
+        fz: m.fz || 1, fx: m.fx == null ? 0.5 : m.fx, fy: m.fy == null ? 0.5 : m.fy, qty: qty, rev: 0, uploaded: m.uploaded || null });
+      C.normalize(state.items[state.items.length - 1]); C.normalizeFit(state.items[state.items.length - 1]);
     }
     if (!state.items.length) { await draftClear(); return; }
     state.nextId = Math.max(meta.nextId || 1, state.items.reduce(function (n, it) { return Math.max(n, it.id + 1); }, 1));
@@ -260,7 +261,7 @@
       note('photo-msg', 'Opening photo ' + (i + 1) + ' of ' + files.length + '. One moment.');
       var photo = await C.loadPhoto(files[i]);
       if (photo) {
-        var added = { id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, blob: photo.blob, fit: false, zoom: 1, cx: 0.5, cy: 0.5, qty: 1, rev: 0, uploaded: null };
+        var added = { id: state.nextId++, img: photo.img, iw: photo.iw, ih: photo.ih, small: photo.small, blob: photo.blob, fit: false, zoom: 1, cx: 0.5, cy: 0.5, fz: 1, fx: 0.5, fy: 0.5, qty: 1, rev: 0, uploaded: null };
         state.items.push(added);
         added.stored = !!(await draftPutPhoto(added));
         room--;
@@ -282,8 +283,16 @@
     var it = state.editing; if (!it) return;
     $('mode-fill').setAttribute('aria-pressed', String(!it.fit));
     $('mode-fit').setAttribute('aria-pressed', String(!!it.fit));
-    $('zoom-tools').hidden = !!it.fit;
-    $('ed-help').textContent = it.fit ? 'Your whole photo is on the magnet, edge to edge, with white filling the rest. Nothing is cut off.' : 'Drag the photo with your finger to move it.';
+    /* a fitted photo zooms too, as far as the point where its white bars are gone */
+    $('zoom-tools').hidden = !!it.fit && C.fitMax(it) < 1.03;
+    $('zoom').max = C.zoomMax(it);
+    syncHelp();
+  }
+  function syncHelp() {
+    var it = state.editing; if (!it) return;
+    $('ed-help').textContent = !it.fit ? 'Drag the photo with your finger to move it.'
+      : C.getZoom(it) <= 1.005 ? 'Your whole photo is on the magnet with white filling the rest. Nothing is cut off. Zoom in a little to shrink the white.'
+      : 'Zoomed in: the white is smaller and a little is trimmed off the ends. Drag to choose which part shows.';
   }
   function setMode(fit) {
     var it = state.editing; if (!it) return;
@@ -293,14 +302,18 @@
   $('mode-fit').addEventListener('click', function () { setMode(true); });
   function syncZoom() {
     var it = state.editing; if (!it) return;
-    $('zoom-out').disabled = it.zoom <= 1.001;
-    $('zoom-in').disabled = it.zoom >= 2.999;
-    $('zoom').value = it.zoom;
+    var z = C.getZoom(it), max = C.zoomMax(it);
+    $('zoom-out').disabled = z <= 1.001;
+    $('zoom-in').disabled = z >= max - 0.001;
+    $('zoom').max = max; $('zoom').value = z;
+    syncHelp();
   }
-  function zoomBy(step) {
+  /* dir is +1 or -1. A fitted photo has a short zoom range, so it moves in quarters of that range. */
+  function zoomBy(dir) {
     var it = state.editing; if (!it) return;
-    it.zoom = C.clamp(Math.round((it.zoom + step) * 100) / 100, 1, 3);
-    C.normalize(it); editor.draw(); syncZoom(); saveDraft();
+    var step = it.fit ? Math.max(0.02, (C.zoomMax(it) - 1) / 4) : 0.25;
+    C.setZoom(it, Math.round((C.getZoom(it) + dir * step) * 100) / 100);
+    editor.draw(); syncZoom(); saveDraft();
   }
   function openEditor(it) {
     state.editing = it;
@@ -314,12 +327,14 @@
   }
   $('zoom').addEventListener('input', function () {
     var it = state.editing; if (!it) return;
-    it.zoom = C.clamp(parseFloat(this.value) || 1, 1, 3);
-    C.normalize(it); editor.draw(); saveDraft();
-    $('zoom-out').disabled = it.zoom <= 1.001; $('zoom-in').disabled = it.zoom >= 2.999;
+    C.setZoom(it, parseFloat(this.value) || 1);
+    editor.draw(); saveDraft();
+    var z = C.getZoom(it);
+    $('zoom-out').disabled = z <= 1.001; $('zoom-in').disabled = z >= C.zoomMax(it) - 0.001;
+    syncHelp();
   });
-  $('zoom-in').addEventListener('click', function () { zoomBy(0.25); });
-  $('zoom-out').addEventListener('click', function () { zoomBy(-0.25); });
+  $('zoom-in').addEventListener('click', function () { zoomBy(1); });
+  $('zoom-out').addEventListener('click', function () { zoomBy(-1); });
   $('editor-done').addEventListener('click', closeEditor);
   $('editor').addEventListener('click', function (e) { if (e.target === this) closeEditor(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && state.editing) closeEditor(); });
@@ -446,7 +461,7 @@
         res = await sb.rpc('submit_order', {
           p_slug: slug, p_order_id: state.orderId, p_name: name,
           p_contact: $('guest-contact').value.trim(),
-          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty, zoom: x.zoom, cx: x.cx, cy: x.cy, fit: !!x.fit }; }),
+          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty, zoom: x.zoom, cx: x.cx, cy: x.cy, fit: !!x.fit, fit_zoom: x.fz || 1, fit_x: x.fx == null ? 0.5 : x.fx, fit_y: x.fy == null ? 0.5 : x.fy }; }),
           p_note: $('guest-note').value.trim()
         });
         if (!res.error || /EVENT_CLOSED|TOO_MANY|BAD_/.test(String(res.error.message || ''))) break;
