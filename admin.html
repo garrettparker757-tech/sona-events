@@ -68,6 +68,10 @@
         <p class="note" id="events-msg" role="status"></p>
       </section>
       <section class="card">
+        <h2>Online payments</h2>
+        <p class="note" id="square-status">Checking the Square connection.</p>
+      </section>
+      <section class="card">
         <h2>Table signs</h2>
         <p class="note">Each opens in a new tab and prints on one Letter page. The QR sign for an event is inside that event.</p>
         <div class="row">
@@ -114,6 +118,8 @@
           <label for="set-welcome">Welcome line (optional)<input id="set-welcome" type="text" maxlength="300"></label>
           <label class="check" for="set-contact"><input id="set-contact" type="checkbox">Ask guests for a phone or email</label>
           <label class="check" for="set-prices"><input id="set-prices" type="checkbox">Show prices to guests and track who has paid</label>
+          <label class="check" for="set-online"><input id="set-online" type="checkbox">Guests pay online at the end with Square (Apple Pay, Google Pay, card)</label>
+          <p class="note" id="set-online-note"></p>
           <button class="btn small" type="submit" id="settings-btn">Save settings</button>
           <p class="note" id="settings-msg" role="status"></p>
         </form>

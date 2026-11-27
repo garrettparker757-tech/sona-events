@@ -41,7 +41,56 @@
         ? 'Pick your magnets up at the Sona Magnets table before the end of the event, under the name '
         : 'Magnets take 10-15 minutes. Pick them up at the table under the name ') + saved.name + '. You can order more below.';
       $('last-order').hidden = false;
+      $('last-pay').hidden = true;
+      if (saved.payId) {
+        sb.rpc('order_payment', { p_order_id: saved.payId }).then(function (r) {
+          var p = r.data && r.data[0];
+          if (p && !p.paid && p.pay_status === 'pending' && p.pay_url) { $('last-pay').href = p.pay_url; $('last-pay').hidden = false; }
+        }, function () {});
+      }
     } catch (err) {}
+  }
+  /* coming back with the browser's Back button from Square: start fresh so the page is not stuck */
+  window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
+  function payOnline() { return !!(state.event && state.event.pay_online && state.event.show_prices !== false); }
+  /* asks our server to make a Square checkout page for the order (or check whether it is paid) */
+  async function squareCall(action, orderId) {
+    var r = await sb.functions.invoke('square', { body: { action: action, order_id: orderId } });
+    if (r.error) throw r.error;
+    return r.data || {};
+  }
+  function doneText(count, paid) {
+    var ready = state.event.kind === 'private'
+      ? 'They will be ready a little later, so please pick them up at the Sona Magnets table before the end of the event. Just tell us your name or order number.'
+      : 'They will be ready in 10-15 minutes, so feel free to shop around. Then come back to the table and tell us your name or order number.';
+    return (count ? 'We are making ' + plural(count, 'magnet') + ' for you. ' : 'We are making your magnets. ') + ready;
+  }
+  /* Back from Square: say whether the payment went through. */
+  async function returnFromSquare(orderId) {
+    try { history.replaceState(null, '', location.pathname); } catch (err) {}
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(storeKey()) || 'null'); } catch (err) {}
+    $('done-no').textContent = saved && saved.payId === orderId ? saved.no : '';
+    $('done-hello').textContent = 'Checking your payment.';
+    $('done-totalbox').hidden = true; $('pay-again').hidden = true; $('done-text').textContent = '';
+    show('view-done');
+    var st = {};
+    for (var i = 0; i < 4; i++) {
+      try { st = await squareCall('status', orderId); } catch (err) { st = {}; }
+      if (st.paid) break;
+      await wait(1500);
+    }
+    if (st.order_no) $('done-no').textContent = st.order_no;
+    var name = saved && saved.name ? ', ' + saved.name : '';
+    if (st.paid) {
+      $('done-hello').textContent = 'Paid. Thank you' + name + '!';
+      $('done-text').textContent = doneText(saved && saved.count, true);
+    } else {
+      $('done-hello').textContent = 'Your payment did not go through';
+      $('done-text').textContent = 'Your photos are saved with us. Pay below to start your magnets.';
+      if (st.url) { $('pay-link').href = st.url; $('pay-again').hidden = false; }
+      else $('done-text').textContent = 'Your photos are saved with us. Please pay at the Sona Magnets table and tell us your order number.';
+    }
   }
 
   /* ---------- an unfinished order is kept on this device ----------
@@ -391,6 +440,10 @@
     $('summary').textContent = plural(n, 'magnet') + ' for ' + name;
     $('check-total').textContent = cost != null ? 'Total ' + C.money(cost) : '';
     $('check-pay').hidden = cost == null;
+    var online = payOnline() && cost != null;
+    $('check-pay').textContent = online ? 'You pay on the next screen.' : 'You pay at the table.';
+    $('submit').textContent = online ? 'Pay ' + C.money(cost) + ' and make my magnets' : 'Yes, make my magnets';
+    $('pay-methods').hidden = !online;
     note('check-msg', '');
     show('view-check', 'check-title');
   }
@@ -467,18 +520,28 @@
         await wait(1200 * (attempt + 1));
       }
       if (res.error) throw res.error;
-      var count = total();
+      var count = total(), orderId = state.orderId;
       $('done-hello').textContent = 'You are all set, ' + name + '!';
       $('done-no').textContent = res.data;
       var cost = priceOf(count);
       $('done-total').textContent = cost != null ? C.money(cost) : '';
       $('done-totalbox').hidden = cost == null;
-      $('done-text').textContent = 'We are making ' + plural(count, 'magnet') + ' for you. ' + (state.event.kind === 'private'
-        ? 'They will be ready a little later, so please pick them up at the Sona Magnets table before the end of the event. Just tell us your name or order number.'
-        : 'They will be ready in 10-15 minutes, so feel free to shop around. Then come back to the table and tell us your name or order number.');
-      try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, at: Date.now() })); } catch (err) {}
+      $('done-pay').textContent = 'Please pay at the table.';
+      $('pay-again').hidden = true;
+      $('done-text').textContent = doneText(count);
+      var online = payOnline() && cost != null;
+      try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, count: count, at: Date.now(), payId: online ? orderId : null })); } catch (err) {}
       state.items = []; state.orderId = null;
       await draftClear();
+      if (online) {
+        /* the order is in; now off to Square's secure page to pay, which comes back here afterwards */
+        progress('Opening the payment page.', steps, steps);
+        try {
+          var pay = await squareCall('create', orderId);
+          if (pay.url) { location.href = pay.url; return; }
+        } catch (err) {}
+        $('done-pay').textContent = 'The payment page did not open, so please pay at the table.';
+      }
       $('last-order').hidden = true;
       $('sending').hidden = true;
       show('view-done');
@@ -528,6 +591,8 @@
     document.title = ev.name + ' | Sona Magnets';
     $('event-name').textContent = ev.name;
     $('welcome').textContent = ev.welcome || (ev.kind === 'private' ? 'Your photos, made into magnets. Pick them up before the end of the event.' : 'Your photos, made into magnets in 10-15 minutes while you shop around.');
+    var back = new URLSearchParams(location.search).get('paid');
+    if (back && /^[0-9a-f-]{36}$/i.test(back)) { returnFromSquare(back); return; }
     if (ev.status !== 'live') { closed('Orders are closed', 'This event is not taking photo orders right now. Please ask us at the Sona Magnets table.'); return; }
     $('contact-wrap').hidden = !ev.ask_contact;
     if (ev.overlay_path) {

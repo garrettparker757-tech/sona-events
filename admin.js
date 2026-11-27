@@ -189,6 +189,7 @@
     return base + '-' + tail;
   }
   async function loadEvents() {
+    if (!squareState) checkSquare();
     var res = await sb.from('events').select('*').order('created_at', { ascending: false });
     if (lostSession(res.error)) return;
     if (res.error) { note('events-msg', 'Could not load events. Reload the page.', 'bad'); return; }
@@ -262,7 +263,7 @@
     if (!name) { note('event-msg', 'Give the event a name.', 'bad'); return; }
     if (!(max >= 1 && max <= 100)) { note('event-msg', 'Magnets per order must be between 1 and 100.', 'bad'); return; }
     var btn = $('event-btn'); btn.disabled = true; note('event-msg', 'Creating the event.');
-    var res = await sb.from('events').insert({ name: name, slug: slugify(name), max_magnets: max, welcome: $('ev-welcome').value.trim(), ask_contact: $('ev-contact').checked, kind: state.kind, show_prices: state.kind !== 'private' }).select().single();
+    var res = await sb.from('events').insert({ name: name, slug: slugify(name), max_magnets: max, welcome: $('ev-welcome').value.trim(), ask_contact: $('ev-contact').checked, kind: state.kind, show_prices: state.kind !== 'private', pay_online: state.kind !== 'private' }).select().single();
     btn.disabled = false;
     if (lostSession(res.error)) return;
     if (res.error) { note('event-msg', 'The event could not be created. Try again.', 'bad'); return; }
@@ -272,6 +273,24 @@
   });
 
   /* ---------- one event ---------- */
+  /* ---------- Square connection ---------- */
+  var squareState = null;
+  function squareLine() {
+    var q = squareState;
+    if (!q) return 'Checking the Square connection.';
+    if (q.connected) return 'Connected to Square (' + q.location + ')' + (q.sandbox ? ', test mode' : '') + '.' +
+      (q.webhook ? '' : ' Payments mark themselves paid when guests come back to the page; finish the webhook step so it also works when they do not.');
+    return q.reason === 'bad_token' ? 'Square refused the access token. Check it was copied in full, from Production.'
+      : 'Not connected to Square yet. Until it is, guests on online-pay events are told to pay at the table.';
+  }
+  async function checkSquare() {
+    try { var r = await sb.functions.invoke('square', { body: { action: 'check' } }); squareState = r.data || { connected: false }; }
+    catch (err) { squareState = { connected: false }; }
+    $('square-status').textContent = squareLine();
+    $('square-status').className = 'note' + (squareState.connected ? ' good' : '');
+    if (state.event && !$('set-online').disabled) $('set-online-note').textContent = squareLine();
+  }
+
   function renderEventInfo() {
     var ev = state.event;
     $('page-title').textContent = ev.name;
@@ -280,6 +299,9 @@
     $('set-name').value = ev.name; $('set-max').value = ev.max_magnets;
     $('set-welcome').value = ev.welcome || ''; $('set-contact').checked = !!ev.ask_contact;
     $('set-prices').checked = ev.show_prices !== false;
+    $('set-online').checked = !!ev.pay_online;
+    $('set-online').disabled = ev.show_prices === false;
+    $('set-online-note').textContent = ev.show_prices === false ? 'Online payment needs prices shown to guests.' : squareLine();
     var special = kindOf(ev) === 'private';
     Array.prototype.forEach.call(document.querySelectorAll('#view-event .market-only'), function (b) { b.hidden = special; });
     $('st-unpaid').parentNode.hidden = !priced(); $('st-collected').parentNode.hidden = !priced();
@@ -362,7 +384,7 @@
     if (!name) { note('settings-msg', 'The event needs a name.', 'bad'); return; }
     if (!(max >= 1 && max <= 100)) { note('settings-msg', 'Magnets per order must be between 1 and 100.', 'bad'); return; }
     var btn = $('settings-btn'); btn.disabled = true;
-    var res = await sb.from('events').update({ name: name, max_magnets: max, welcome: $('set-welcome').value.trim(), ask_contact: $('set-contact').checked, show_prices: $('set-prices').checked }).eq('id', ev.id).select().single();
+    var res = await sb.from('events').update({ name: name, max_magnets: max, welcome: $('set-welcome').value.trim(), ask_contact: $('set-contact').checked, show_prices: $('set-prices').checked, pay_online: $('set-online').checked }).eq('id', ev.id).select().single();
     btn.disabled = false;
     if (lostSession(res.error)) return;
     if (res.error) { note('settings-msg', 'The settings did not save. Try again.', 'bad'); return; }
@@ -452,7 +474,7 @@
     var seq = ++state.loadSeq;
     var both = await Promise.all([
       sb.from('orders')
-        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, fit_zoom, fit_x, fit_y, claimed_at, claimed_by)')
+        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, pay_status, square_payment_id, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, fit_zoom, fit_x, fit_y, claimed_at, claimed_by)')
         .eq('event_id', ev.id).order('order_no', { ascending: true }),
       sb.from('events').select('*').eq('id', ev.id).maybeSingle()
     ]);
@@ -535,10 +557,18 @@
     C.drawCrop(g, item, 0, 0, canvas.width);
     C.drawOverlay(g, state.overlay, 0, 0, canvas.width);
   }
+  /* An online-pay order is held back from printing until Square says it is paid,
+     or until staff choose to print it anyway (they will take payment at the table). */
+  function awaitingPay(o) { return o.pay_status === 'pending' && !o.paid_at; }
+  function awaitingCount() {
+    var n = 0;
+    state.orders.forEach(function (o) { if (o.status !== 'done' && awaitingPay(o)) o.order_photos.forEach(function (p) { if (!p.printed_at) n += p.qty; }); });
+    return n;
+  }
   function waitingRows() {
     var rows = [];
     state.orders.forEach(function (o) {
-      if (o.status === 'done') return;
+      if (o.status === 'done' || awaitingPay(o)) return;
       o.order_photos.forEach(function (p) { if (!p.printed_at && !heldElsewhere(p) && !onMySheet(p)) rows.push({ order: o, photo: p }); });
     });
     return rows;
@@ -596,7 +626,8 @@
     $('sheet-text').textContent = text;
     $('sheet-held').textContent = [
       mine ? plural(mine, 'magnet') + (mine === 1 ? ' is' : ' are') + ' on your sheet below, ready to open.' : '',
-      held ? plural(held, 'magnet') + (held === 1 ? ' is' : ' are') + ' on a sheet another device is printing right now.' : ''
+      held ? plural(held, 'magnet') + (held === 1 ? ' is' : ' are') + ' on a sheet another device is printing right now.' : '',
+      awaitingCount() ? plural(awaitingCount(), 'magnet') + ' waiting for the guest to finish paying online.' : ''
     ].filter(Boolean).join(' ');
     var one = $('print-one'), all = $('print-all');
     /* one sheet at a time on each device: open or cancel the ready one first */
@@ -658,9 +689,10 @@
       var money = priced();
       var cost = o.paid_at && o.paid_amount != null ? Number(o.paid_amount) : C.priceFor(count);
       if (money && cost != null) meta.appendChild(el('strong', 'price', C.money(cost)));
-      if (money) meta.appendChild(el('span', 'chip ' + (o.paid_at ? 'paid' : 'unpaid'), o.paid_at ? 'Paid' : 'Not paid'));
+      if (money) meta.appendChild(awaitingPay(o) ? el('span', 'chip held', 'Paying online')
+        : el('span', 'chip ' + (o.paid_at ? (o.square_payment_id ? 'paid online' : 'paid') : 'unpaid'), o.paid_at ? (o.square_payment_id ? 'Paid online' : 'Paid') : 'Not paid'));
       meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(when(o.created_at)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
-      var label = o.status === 'new' ? 'Waiting to print' : o.status === 'printed' ? 'Printed' : 'Picked up';
+      var label = o.status === 'new' ? (awaitingPay(o) ? 'Held until paid' : 'Waiting to print') : o.status === 'printed' ? 'Printed' : 'Picked up';
       var busyElsewhere = o.status === 'new' && o.order_photos.some(heldElsewhere);
       meta.appendChild(el('span', 'chip ' + (busyElsewhere ? 'held' : o.status), busyElsewhere ? 'Printing on another device' : label));
       head.appendChild(meta);
@@ -683,6 +715,12 @@
       li.appendChild(el('p', 'note', 'Tap a photo to fix how it is framed.'));
 
       var actions = el('div', 'row');
+      if (awaitingPay(o)) {
+        var anyway = el('button', 'btn small', 'Print without online payment'); anyway.type = 'button';
+        anyway.title = 'For a guest who pays at the table instead';
+        anyway.addEventListener('click', function () { setOrder(o, { pay_status: 'table' }); });
+        actions.appendChild(anyway);
+      }
       if (money && !o.paid_at) {
         var pay = el('button', 'btn small primary', 'Mark paid' + (cost != null ? ' ' + C.money(cost) : '')); pay.type = 'button';
         pay.addEventListener('click', function () { setOrder(o, { paid_at: new Date().toISOString(), paid_amount: cost }); });
@@ -712,7 +750,7 @@
         });
         actions.appendChild(again);
       }
-      if (money && o.paid_at) {
+      if (money && o.paid_at && !o.square_payment_id) {
         var unpay = el('button', 'btn small', 'Undo paid'); unpay.type = 'button';
         unpay.addEventListener('click', function () { setOrder(o, { paid_at: null, paid_amount: null }); });
         actions.appendChild(unpay);

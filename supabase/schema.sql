@@ -27,3 +27,9 @@
 --  * order_photos.crop_fit: the whole photo sits on the front with white filling the rest, instead of a
 --    square crop. fit_zoom / fit_x / fit_y zoom and move a fitted photo and are kept apart from the
 --    square crop (crop_zoom / crop_x / crop_y), so switching between the two loses neither.
+--  * Online payment (Square): events.pay_online; orders.pay_status ('pending' holds an order back from
+--    printing until paid; 'failed' and 'table' let it print), pay_url, pay_amount, square_order_id,
+--    square_payment_id. The "square" edge function (supabase/functions/square) makes the checkout page,
+--    checks payment, and receives Square's payment.updated webhook. Its secrets live in Supabase:
+--    SQUARE_ACCESS_TOKEN, SQUARE_WEBHOOK_SIGNATURE_KEY (optional SQUARE_LOCATION_ID, SQUARE_ENV=sandbox).
+--    Prices in that function must match config.js.
