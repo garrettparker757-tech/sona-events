@@ -524,11 +524,15 @@
     return { zoom: Number(p.crop_zoom) || 1, cx: p.crop_x == null ? 0.5 : Number(p.crop_x), cy: p.crop_y == null ? 0.5 : Number(p.crop_y), fit: p.crop_fit === true,
       fz: Number(p.fit_zoom) || 1, fx: p.fit_x == null ? 0.5 : Number(p.fit_x), fy: p.fit_y == null ? 0.5 : Number(p.fit_y) };
   }
-  function drawFramed(canvas, pic, f) {
+  /* front = true draws only the front of the magnet (every picture on screen); without it the whole
+     printed square is drawn, including the part that rolls over the edge (the print sheets). */
+  function drawFramed(canvas, pic, f, front) {
     var g = canvas.getContext('2d');
     g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
     g.imageSmoothingQuality = 'high';
-    C.drawCrop(g, { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit, fz: f.fz, fx: f.fx, fy: f.fy }, 0, 0, canvas.width);
+    var item = { img: pic.img, iw: pic.iw, ih: pic.ih, zoom: f.zoom, cx: f.cx, cy: f.cy, fit: f.fit, fz: f.fz, fx: f.fx, fy: f.fy };
+    if (front) { C.drawFront(g, item, state.overlay, canvas.width); return; }
+    C.drawCrop(g, item, 0, 0, canvas.width);
     C.drawOverlay(g, state.overlay, 0, 0, canvas.width);
   }
   function waitingRows() {
@@ -669,7 +673,7 @@
         t.title = 'Fix how this photo is framed';
         t.setAttribute('aria-label', 'Fix photo for order ' + o.order_no);
         var cv = document.createElement('canvas'); cv.width = cv.height = 132;
-        photoPic(p.path).then(function (pic) { drawFramed(cv, pic, framing(p)); }).catch(function () { t.title = 'Photo could not load'; });
+        photoPic(p.path).then(function (pic) { drawFramed(cv, pic, framing(p), true); }).catch(function () { t.title = 'Photo could not load'; });
         t.appendChild(cv);
         if (p.qty > 1) t.appendChild(el('span', null, 'x' + p.qty));
         t.addEventListener('click', function () { openFix(o, p); });
@@ -735,7 +739,7 @@
     $('fix-fit').setAttribute('aria-pressed', String(!!it.fit));
     /* a fitted photo zooms too, as far as the point where its white bars are gone */
     $('fix-tools').hidden = !!it.fit && C.fitMax(it) < 1.03;
-    $('fix-legend').textContent = !it.fit ? 'Drag to move. Everything inside the dashed square shows on the front of the magnet.'
+    $('fix-legend').textContent = !it.fit ? 'Drag to move. This is the front of the magnet, exactly as it will look.'
       : z <= 1.005 ? 'The whole photo sits on the front of the magnet with white filling the rest. Nothing is cut off. Zoom in a little to shrink the white.'
       : 'Zoomed in: the white is smaller and a little is trimmed off the ends. Drag to choose which part shows.';
   }
@@ -834,9 +838,7 @@
     var cv = $('ov-canvas'), g = cv.getContext('2d'), n = cv.width;
     if (!ovSample) ovSample = samplePhoto();
     g.clearRect(0, 0, n, n);
-    C.drawCrop(g, ovSample, 0, 0, n);
-    C.drawOverlay(g, ov, 0, 0, n);
-    C.drawGuides(g, n);
+    C.drawFront(g, ovSample, ov, n);
   }
   function renderOverlay() {
     var has = !!ov;
@@ -912,7 +914,7 @@
   $('ov-undo').addEventListener('click', function () { editCopy(); note('ov-msg', ''); renderOverlay(); });
   (function () {
     var cv = $('ov-canvas'), last = null;
-    function face() { return cv.getBoundingClientRect().width * CFG.crop.face / CFG.crop.photo; }
+    function face() { return cv.getBoundingClientRect().width; }   /* the preview is the front of the magnet */
     function nudge(dx, dy) { ov.cx = C.clamp(ov.cx + dx, -0.5, 1.5); ov.cy = C.clamp(ov.cy + dy, -0.5, 1.5); ovTouched(); }
     cv.addEventListener('pointerdown', function (e) { try { cv.setPointerCapture(e.pointerId); } catch (err) {} last = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
     cv.addEventListener('pointermove', function (e) {

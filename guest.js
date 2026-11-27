@@ -175,8 +175,7 @@
       thumb.width = thumb.height = 240;
       thumb.setAttribute('role', 'img');
       thumb.setAttribute('aria-label', 'Photo ' + (idx + 1));
-      C.drawCrop(thumb.getContext('2d'), it, 0, 0, 240);
-      C.drawOverlay(thumb.getContext('2d'), state.overlay, 0, 0, 240);
+      C.drawFront(thumb.getContext('2d'), it, state.overlay, 240);
       thumb.addEventListener('click', function () { openEditor(it); });
       li.appendChild(thumb);
 
@@ -373,7 +372,7 @@
       var g = cv.getContext('2d');
       g.fillStyle = '#fff'; g.fillRect(0, 0, px, px);
       g.imageSmoothingQuality = 'high';
-      /* show only the front of the magnet: the part inside the dashed square */
+      /* show only the front of the magnet, the same as every other picture on screen */
       C.drawCrop(g, it, (px - full) / 2, (px - full) / 2, full);
       C.drawOverlay(g, state.overlay, (px - full) / 2, (px - full) / 2, full);
       /* tapping the picture adjusts it, the same as the Adjust button under it */

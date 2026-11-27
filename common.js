@@ -167,15 +167,17 @@
     return window.SONA.supabaseUrl + '/storage/v1/object/public/overlays/' + String(path).split('/').map(encodeURIComponent).join('/');
   }
 
-  /* Fades the part that wraps round the edge and outlines the front of the magnet. */
-  function drawGuides(g, n) {
-    var inset = (1 - window.SONA.crop.face / window.SONA.crop.photo) / 2 * n;
-    g.fillStyle = 'rgba(251, 245, 233, 0.55)';
-    g.fillRect(0, 0, n, inset); g.fillRect(0, n - inset, n, inset);
-    g.fillRect(0, inset, inset, n - 2 * inset); g.fillRect(n - inset, inset, inset, n - 2 * inset);
-    g.setLineDash([12, 8]); g.lineWidth = 3; g.strokeStyle = '#17807E';
-    g.strokeRect(inset, inset, n - 2 * inset, n - 2 * inset);
-    g.setLineDash([]);
+  /* Every picture on screen shows the front of the magnet and nothing else: what you see is what
+     faces you once it is pressed. The print is a little larger all round (the template allows for
+     it); that extra rolls over the edge, so it is not drawn here. */
+  function frontScale() { return window.SONA.crop.photo / window.SONA.crop.face; }
+  function drawFront(g, it, ov, n) {
+    var full = n * frontScale(), o = (n - full) / 2;
+    g.save();
+    g.beginPath(); g.rect(0, 0, n, n); g.clip();
+    drawCrop(g, it, o, o, full);
+    if (ov) drawOverlay(g, ov, o, o, full);
+    g.restore();
   }
 
   /* Wires a canvas so one finger drags, two fingers pinch, arrow keys nudge. */
@@ -185,13 +187,11 @@
       var it = getItem(); if (!it) return;
       var g = canvas.getContext('2d'), n = canvas.width;
       g.clearRect(0, 0, n, n);
-      drawCrop(g, it, 0, 0, n);
-      if (getOverlay) drawOverlay(g, getOverlay(), 0, 0, n);
-      drawGuides(g, n);
+      drawFront(g, it, getOverlay ? getOverlay() : null, n);
     }
     /* a fitted photo: slide it by a share of its own drawn size, measured on screen */
     function fitMoveBy(it, dxScreen, dyScreen) {
-      var F = canvas.getBoundingClientRect().width * window.SONA.crop.face / window.SONA.crop.photo, s = fitSize(it);
+      var F = canvas.getBoundingClientRect().width, s = fitSize(it);   /* the canvas is the front */
       if (!F) return;
       it.fx = (it.fx == null ? 0.5 : it.fx) - dxScreen / (s.w * F);
       it.fy = (it.fy == null ? 0.5 : it.fy) - dyScreen / (s.h * F);
@@ -216,7 +216,7 @@
       if (pts.size === 1) {
         if (it.fit) fitMoveBy(it, cur.x - prev.x, cur.y - prev.y);
         else {
-          var k = cropRect(it).s / canvas.getBoundingClientRect().width;
+          var k = cropRect(it).s / (canvas.getBoundingClientRect().width * frontScale());
           moveBy(it, -(cur.x - prev.x) * k, -(cur.y - prev.y) * k);
         }
       } else if (pts.size === 2) {
@@ -270,5 +270,5 @@
     return isPack && next - now <= 5 ? { qty: n + 1, extra: next - now, price: next } : null;
   }
 
-  window.SonaCommon = { fitMax: fitMax, normalizeFit: normalizeFit, zoomMax: zoomMax, getZoom: getZoom, setZoom: setZoom, drawGuides: drawGuides, overlayRect: overlayRect, drawOverlay: drawOverlay, loadOverlayImage: loadOverlayImage, overlayUrl: overlayUrl, clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
+  window.SonaCommon = { fitMax: fitMax, normalizeFit: normalizeFit, zoomMax: zoomMax, getZoom: getZoom, setZoom: setZoom, drawFront: drawFront, overlayRect: overlayRect, drawOverlay: drawOverlay, loadOverlayImage: loadOverlayImage, overlayUrl: overlayUrl, clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
 })();
