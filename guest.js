@@ -78,22 +78,35 @@
     $('done-hello').textContent = 'Checking your payment.';
     $('done-totalbox').hidden = true; $('pay-again').hidden = true; $('done-text').textContent = '';
     show('view-done');
-    var st = {};
-    for (var i = 0; i < 4; i++) {
-      try { st = await squareCall('status', orderId); } catch (err) { st = {}; }
-      if (st.paid) break;
-      await wait(1500);
-    }
-    if (st.order_no) $('done-no').textContent = st.order_no;
+    state.fromSquare = true;
     var name = saved && saved.name ? ', ' + saved.name : '';
-    if (st.paid) {
+    function paid() {
       $('done-hello').textContent = 'Paid. Thank you' + name + '!';
       $('done-text').textContent = doneText(saved && saved.count, true);
-    } else {
-      $('done-hello').textContent = 'Your payment did not go through';
-      $('done-text').textContent = 'Your photos are saved with us. Pay below to start your magnets.';
-      if (st.url) { $('pay-link').href = st.url; $('pay-again').hidden = false; }
-      else $('done-text').textContent = 'Your photos are saved with us. Please pay at the Sona Magnets table and tell us your order number.';
+      $('pay-again').hidden = true;
+    }
+    async function ask() {
+      var st = {};
+      try { st = await squareCall('status', orderId); } catch (err) { st = {}; }
+      if (st.order_no) $('done-no').textContent = st.order_no;
+      return st;
+    }
+    /* Square usually confirms within a few seconds; give it up to about 20 */
+    var st = {};
+    for (var i = 0; i < 8; i++) {
+      st = await ask();
+      if (st.paid) { paid(); return; }
+      await wait(2500);
+    }
+    $('done-hello').textContent = 'We have not received your payment yet';
+    $('done-text').textContent = 'Your photos are saved with us. If you already paid, it can take a minute to show up: keep this page open, or show it at the Sona Magnets table.';
+    if (st.url) { $('pay-link').href = st.url; $('pay-again').hidden = false; }
+    /* keep checking quietly for a few minutes and switch to "Paid" when it arrives */
+    for (var j = 0; j < 36; j++) {
+      await wait(5000);
+      if (document.hidden) continue;
+      st = await ask();
+      if (st.paid) { paid(); return; }
     }
   }
 
@@ -536,6 +549,13 @@
       $('pay-again').hidden = true;
       $('done-text').textContent = doneText(count);
       var online = payOnline() && cost != null;
+      /* online payment may have been switched on after this page opened: the server knows for sure */
+      if (!online && !STAFF && cost != null) {
+        try {
+          var ps = await sb.rpc('order_payment', { p_order_id: orderId });
+          if (ps.data && ps.data[0] && ps.data[0].pay_status === 'pending') online = true;
+        } catch (err) {}
+      }
       if (!STAFF) try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, count: count, at: Date.now(), payId: online ? orderId : null })); } catch (err) {}
       if (STAFF) {
         $('done-hello').textContent = 'Added to the print queue';
@@ -579,7 +599,10 @@
   });
   $('note-open').addEventListener('click', function () { this.hidden = true; $('note-wrap').hidden = false; $('guest-note').focus(); });
   $('back-photos').addEventListener('click', function () { show('view-photos', 'photos-title'); });
-  $('again').addEventListener('click', function () { $('guest-name').value = ''; $('guest-note').value = ''; $('note-wrap').hidden = true; $('note-open').hidden = false; renderPhotos(); showLastOrder(); show('view-photos', 'photos-title'); });
+  $('again').addEventListener('click', function () {
+    /* after coming back from Square the page skipped its usual set-up, so start it fresh */
+    if (state.fromSquare) { location.assign(location.pathname); return; }
+    $('guest-name').value = ''; $('guest-note').value = ''; $('note-wrap').hidden = true; $('note-open').hidden = false; renderPhotos(); showLastOrder(); show('view-photos', 'photos-title'); });
 
   (async function start() {
     if (!window.supabase || !slug) {

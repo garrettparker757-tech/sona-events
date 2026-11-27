@@ -298,6 +298,8 @@
     $('sign-qr').href = signUrl(ev);
     /* staff's own order: same photo tools, no payment, no limit, any event status */
     $('own-order').href = '/e/' + encodeURIComponent(ev.slug) + '?staff=1';
+    /* the "How it works" sign matches how this event takes payment */
+    $('sign-how').href = '/sign.html?sign=how' + (ev.pay_online && ev.show_prices !== false ? '' : '&pay=table');
     $('set-name').value = ev.name; $('set-max').value = ev.max_magnets;
     $('set-welcome').value = ev.welcome || ''; $('set-contact').checked = !!ev.ask_contact;
     $('set-prices').checked = ev.show_prices !== false;

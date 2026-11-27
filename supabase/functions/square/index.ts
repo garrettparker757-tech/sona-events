@@ -217,7 +217,10 @@ async function webhook(req: Request) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "OPTIONS") {
+    const asked = req.headers.get("access-control-request-headers");
+    return new Response("ok", { headers: { ...cors, ...(asked ? { "Access-Control-Allow-Headers": asked } : {}) } });
+  }
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   await loadSecrets();
   if (req.headers.get("x-square-hmacsha256-signature")) return webhook(req);

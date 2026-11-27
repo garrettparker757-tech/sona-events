@@ -31,6 +31,11 @@
     });
   } else {
     document.title = 'How it works sign';
+    /* events that take payment online: guests pay on their phone, not at the table */
+    if (q.get('pay') !== 'table') {
+      $('how-pay').textContent = 'Pay on your phone';
+      $('how-pay-sub').textContent = 'Apple Pay, Google Pay or card. No waiting in line.';
+    }
   }
   Array.prototype.forEach.call(document.querySelectorAll('.poster'), function (p) { if (p !== poster) p.parentNode.removeChild(p); });
   poster.hidden = false;
