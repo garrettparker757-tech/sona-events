@@ -6,6 +6,10 @@
   var parts = location.pathname.split('/').filter(Boolean);
   var slug = (parts[0] === 'e' && parts[1]) ? decodeURIComponent(parts[1]) : (new URLSearchParams(location.search).get('e') || '');
   slug = slug.toLowerCase();
+  /* Staff mode (/e/<event>?staff=1): a signed-in staff member makes an order themselves.
+     Same photo tools, but no prices or payment, any event status, and it goes straight to the print queue. */
+  var STAFF = new URLSearchParams(location.search).get('staff') === '1';
+  var DKEY = (STAFF ? 'staff|' : '') + slug;   /* staff and guest drafts on one device stay apart */
 
   var state = { event: null, items: [], editing: null, nextId: 1, orderId: null, sending: false, busy: false, overlay: null };
   /* Private events can hide prices: the host pays, not the guest. */
@@ -123,7 +127,7 @@
       } catch (err) { resolve(null); }
     });
   }
-  function photoKey(id) { return slug + '|' + id; }
+  function photoKey(id) { return DKEY + '|' + id; }
   function draftPutPhoto(it) { return draftTx('photos', 'readwrite', function (s) { return s.put(it.blob, photoKey(it.id)); }); }
   function draftDropPhoto(id) { return draftTx('photos', 'readwrite', function (s) { return s.delete(photoKey(id)); }); }
   function draftMeta() {
@@ -140,8 +144,8 @@
     if (!draft.db || !state.event) return;
     var meta = draftMeta();
     var done = meta.items.length
-      ? await draftTx('meta', 'readwrite', function (s) { return s.put(meta, slug); })
-      : await draftTx('meta', 'readwrite', function (s) { return s.delete(slug); });
+      ? await draftTx('meta', 'readwrite', function (s) { return s.put(meta, DKEY); })
+      : await draftTx('meta', 'readwrite', function (s) { return s.delete(DKEY); });
     draft.ok = !!done && meta.items.length === state.items.length;
     draft.failed = !draft.ok && state.items.length > 0;
     draftNote();
@@ -166,8 +170,8 @@
   async function draftClear() {
     clearTimeout(draft.timer); draft.timer = null; draft.restored = 0; draft.ok = false; draft.failed = false;
     if (!draft.db) return;
-    await draftTx('meta', 'readwrite', function (s) { return s.delete(slug); });
-    await draftTx('photos', 'readwrite', function (s) { return s.delete(IDBKeyRange.bound(slug + '|', slug + '|\uffff')); });
+    await draftTx('meta', 'readwrite', function (s) { return s.delete(DKEY); });
+    await draftTx('photos', 'readwrite', function (s) { return s.delete(IDBKeyRange.bound(DKEY + '|', DKEY + '|\uffff')); });
   }
   function draftImage(blob) {
     return new Promise(function (resolve) {
@@ -180,7 +184,7 @@
   async function draftRestore() {
     draft.db = await draftOpen();
     if (!draft.db) return;
-    var got = await draftTx('meta', 'readonly', function (s) { return s.get(slug); }), meta = got && got.value;
+    var got = await draftTx('meta', 'readonly', function (s) { return s.get(DKEY); }), meta = got && got.value;
     if (!meta || !meta.items || !meta.items.length) return;
     if (Date.now() - meta.at > draft.KEEP_MS) { await draftClear(); return; }
     var room = state.event.max_magnets;
@@ -235,18 +239,18 @@
       var minus = el('button', null, '−'); minus.type = 'button'; minus.setAttribute('aria-label', 'One fewer of photo ' + (idx + 1));
       var out;
       if (max > 12) {
-        out = document.createElement('input'); out.type = 'number'; out.inputMode = 'numeric'; out.min = 1; out.max = it.qty + left; out.value = it.qty;
+        out = document.createElement('input'); out.type = 'number'; out.inputMode = 'numeric'; out.min = 1; out.max = Math.min(100, it.qty + left); out.value = it.qty;
         out.className = 'qtynum'; out.setAttribute('aria-label', 'How many of photo ' + (idx + 1));
         out.addEventListener('change', function () {
           var others = total() - it.qty, v = Math.round(Number(out.value) || 1);
-          it.qty = Math.min(Math.max(1, v), Math.max(1, state.event.max_magnets - others));
+          it.qty = Math.min(Math.max(1, v), Math.max(1, state.event.max_magnets - others), 100);
           renderPhotos();
         });
       } else { out = el('output', null, String(it.qty)); }
       var plus = el('button', null, '+'); plus.type = 'button'; plus.setAttribute('aria-label', 'One more of photo ' + (idx + 1));
-      minus.disabled = it.qty <= 1; plus.disabled = left <= 0;
+      minus.disabled = it.qty <= 1; plus.disabled = left <= 0 || it.qty >= 100;
       minus.addEventListener('click', function () { if (it.qty > 1) { it.qty--; renderPhotos(); } });
-      plus.addEventListener('click', function () { if (remaining() > 0) { it.qty++; renderPhotos(); } });
+      plus.addEventListener('click', function () { if (remaining() > 0 && it.qty < 100) { it.qty++; renderPhotos(); } });
       qty.appendChild(minus); qty.appendChild(out); qty.appendChild(plus);
       copies.appendChild(qty);
       side.appendChild(copies);
@@ -442,7 +446,7 @@
     $('check-pay').hidden = cost == null;
     var online = payOnline() && cost != null;
     $('check-pay').textContent = online ? 'You pay on the next screen.' : 'You pay at the table.';
-    $('submit').textContent = online ? 'Pay ' + C.money(cost) + ' and make my magnets' : 'Yes, make my magnets';
+    $('submit').textContent = STAFF ? 'Add to the print queue' : online ? 'Pay ' + C.money(cost) + ' and make my magnets' : 'Yes, make my magnets';
     $('pay-methods').hidden = !online;
     note('check-msg', '');
     show('view-check', 'check-title');
@@ -466,6 +470,7 @@
     if (m.indexOf('EVENT_CLOSED') >= 0) return 'This event just stopped taking orders. Please ask us at the Sona Magnets table.';
     if (m.indexOf('TOO_MANY') >= 0 || m.indexOf('BAD_PHOTOS') >= 0) return 'That is more magnets than one order allows. Go back, remove a photo, and try again.';
     if (m.indexOf('BAD_NAME') >= 0) return 'Please type your name.';
+    if (m.indexOf('NOT_STAFF') >= 0 || m.indexOf('JWT') >= 0) return 'You are not signed in any more. Sign in on the staff page in this browser, then come back and press the button again. Your photos are kept.';
     return 'Your order did not go through, most likely because of a weak signal. Tap the yellow button to try again, or ask us at the table.';
   }
   function progress(text, done, of) {
@@ -510,13 +515,14 @@
       progress('Almost done.', state.items.length, steps);
       var res = null;
       for (var attempt = 0; attempt < 3; attempt++) {
-        res = await sb.rpc('submit_order', {
-          p_slug: slug, p_order_id: state.orderId, p_name: name,
-          p_contact: $('guest-contact').value.trim(),
-          p_photos: state.items.map(function (x) { return { path: x.uploaded, qty: x.qty, zoom: x.zoom, cx: x.cx, cy: x.cy, fit: !!x.fit, fit_zoom: x.fz || 1, fit_x: x.fx == null ? 0.5 : x.fx, fit_y: x.fy == null ? 0.5 : x.fy }; }),
-          p_note: $('guest-note').value.trim()
-        });
-        if (!res.error || /EVENT_CLOSED|TOO_MANY|BAD_/.test(String(res.error.message || ''))) break;
+        var photos = state.items.map(function (x) { return { path: x.uploaded, qty: x.qty, zoom: x.zoom, cx: x.cx, cy: x.cy, fit: !!x.fit, fit_zoom: x.fz || 1, fit_x: x.fx == null ? 0.5 : x.fx, fit_y: x.fy == null ? 0.5 : x.fy }; });
+        res = STAFF
+          ? await sb.rpc('staff_submit_order', { p_event_id: state.event.id, p_order_id: state.orderId, p_name: name, p_photos: photos, p_note: $('guest-note').value.trim() })
+          : await sb.rpc('submit_order', {
+              p_slug: slug, p_order_id: state.orderId, p_name: name,
+              p_contact: $('guest-contact').value.trim(), p_photos: photos, p_note: $('guest-note').value.trim()
+            });
+        if (!res.error || /EVENT_CLOSED|TOO_MANY|BAD_|NOT_STAFF/.test(String(res.error.message || ''))) break;
         await wait(1200 * (attempt + 1));
       }
       if (res.error) throw res.error;
@@ -530,7 +536,11 @@
       $('pay-again').hidden = true;
       $('done-text').textContent = doneText(count);
       var online = payOnline() && cost != null;
-      try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, count: count, at: Date.now(), payId: online ? orderId : null })); } catch (err) {}
+      if (!STAFF) try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, count: count, at: Date.now(), payId: online ? orderId : null })); } catch (err) {}
+      if (STAFF) {
+        $('done-hello').textContent = 'Added to the print queue';
+        $('done-text').textContent = plural(count, 'magnet') + ' for "' + name + '". It is on the staff page now, ready to print with everything else.';
+      }
       state.items = []; state.orderId = null;
       await draftClear();
       if (online) {
@@ -577,7 +587,8 @@
       closed('This link is not working', slug ? 'The page could not load. Please check your signal, then close this page and scan the code again.' : 'Scan the QR code at the Sona Magnets table to place an order.');
       return;
     }
-    sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: STAFF, autoRefreshToken: STAFF, detectSessionInUrl: false } });
+    if (STAFF) { await startStaff(); return; }
     var res = null;
     for (var attempt = 0; attempt < 3; attempt++) {
       res = await sb.rpc('get_event', { p_slug: slug });
@@ -604,4 +615,37 @@
     showLastOrder();
     show('view-photos');
   })();
+
+  async function startStaff() {
+    document.body.classList.add('staffmode');
+    var who = await sb.auth.getSession().catch(function () { return null; });
+    if (!who || !who.data || !who.data.session) {
+      closed('Sign in first', 'Open the staff page in this browser and sign in, then press Add an order yourself again.');
+      $('event-name').textContent = 'Sona Magnets staff';
+      return;
+    }
+    var r = await sb.from('events').select('*').eq('slug', slug).maybeSingle();
+    if (r.error || !r.data) { closed('Event not found', 'Go back to the staff page and open the event again.'); return; }
+    var ev = r.data;
+    /* no prices, no payment, no per-order limit for our own orders */
+    ev.show_prices = false; ev.pay_online = false; ev.max_magnets = 500; ev.ask_contact = false;
+    state.event = ev;
+    document.title = 'Staff order | ' + ev.name;
+    $('event-name').textContent = 'Staff order: ' + ev.name;
+    $('welcome').textContent = 'Your own order. No payment and no limit. When you add it, it goes straight to the print queue for this event.';
+    $('name-title').textContent = 'Name for this order';
+    $('guest-name').placeholder = 'For example: Sona samples or Taylor (texted photos)';
+    $('guest-name').setAttribute('autocomplete', 'off');
+    $('help-line').textContent = '';
+    var back = el('a', 'btn small', 'Back to the staff page'); back.href = '/admin';
+    $('again').parentNode.insertBefore(back, $('again').nextSibling);
+    $('again').textContent = 'Make another order';
+    if (ev.overlay_path) {
+      var pic = await C.loadOverlayImage(C.overlayUrl(ev.overlay_path));
+      if (pic) state.overlay = { img: pic.img, iw: pic.iw, ih: pic.ih, scale: Number(ev.overlay_scale) || 1, cx: ev.overlay_x == null ? 0.5 : Number(ev.overlay_x), cy: ev.overlay_y == null ? 0.5 : Number(ev.overlay_y) };
+    }
+    await draftRestore();
+    renderPhotos();
+    show('view-photos');
+  }
 })();

@@ -296,6 +296,8 @@
     $('page-title').textContent = ev.name;
     $('sign-name').textContent = ev.name;
     $('sign-qr').href = signUrl(ev);
+    /* staff's own order: same photo tools, no payment, no limit, any event status */
+    $('own-order').href = '/e/' + encodeURIComponent(ev.slug) + '?staff=1';
     $('set-name').value = ev.name; $('set-max').value = ev.max_magnets;
     $('set-welcome').value = ev.welcome || ''; $('set-contact').checked = !!ev.ask_contact;
     $('set-prices').checked = ev.show_prices !== false;
@@ -474,7 +476,7 @@
     var seq = ++state.loadSeq;
     var both = await Promise.all([
       sb.from('orders')
-        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, pay_status, square_payment_id, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, fit_zoom, fit_x, fit_y, claimed_at, claimed_by)')
+        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, pay_status, square_payment_id, staff_made, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, fit_zoom, fit_x, fit_y, claimed_at, claimed_by)')
         .eq('event_id', ev.id).order('order_no', { ascending: true }),
       sb.from('events').select('*').eq('id', ev.id).maybeSingle()
     ]);
@@ -659,7 +661,7 @@
     $('st-orders').textContent = state.orders.length;
     $('st-done').textContent = doneCount;
     var unpaid = 0, collected = 0;
-    state.orders.forEach(function (o) { if (o.paid_at) collected += Number(o.paid_amount) || 0; else unpaid++; });
+    state.orders.forEach(function (o) { if (o.paid_at) collected += Number(o.paid_amount) || 0; else if (!o.staff_made) unpaid++; });
     $('st-unpaid').textContent = unpaid;
     $('st-collected').textContent = C.money(collected);
     var labels = { todo: 'To do (' + (state.orders.length - doneCount) + ')', done: 'Picked up (' + doneCount + ')', all: 'All (' + state.orders.length + ')' };
@@ -688,8 +690,9 @@
       var count = o.order_photos.reduce(function (n, p) { return n + p.qty; }, 0);
       var money = priced();
       var cost = o.paid_at && o.paid_amount != null ? Number(o.paid_amount) : C.priceFor(count);
-      if (money && cost != null) meta.appendChild(el('strong', 'price', C.money(cost)));
-      if (money) meta.appendChild(awaitingPay(o) ? el('span', 'chip held', 'Paying online')
+      if (money && cost != null && !o.staff_made) meta.appendChild(el('strong', 'price', C.money(cost)));
+      if (o.staff_made) meta.appendChild(el('span', 'chip online', 'Staff order'));
+      if (money && !o.staff_made) meta.appendChild(awaitingPay(o) ? el('span', 'chip held', 'Paying online')
         : el('span', 'chip ' + (o.paid_at ? (o.square_payment_id ? 'paid online' : 'paid') : 'unpaid'), o.paid_at ? (o.square_payment_id ? 'Paid online' : 'Paid') : 'Not paid'));
       meta.appendChild(el('span', 'note', plural(count, 'magnet') + ', ' + new Date(when(o.created_at)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })));
       var label = o.status === 'new' ? (awaitingPay(o) ? 'Held until paid' : 'Waiting to print') : o.status === 'printed' ? 'Printed' : 'Picked up';
@@ -721,7 +724,7 @@
         anyway.addEventListener('click', function () { setOrder(o, { pay_status: 'table' }); });
         actions.appendChild(anyway);
       }
-      if (money && !o.paid_at) {
+      if (money && !o.paid_at && !o.staff_made) {
         var pay = el('button', 'btn small primary', 'Mark paid' + (cost != null ? ' ' + C.money(cost) : '')); pay.type = 'button';
         pay.addEventListener('click', function () { setOrder(o, { paid_at: new Date().toISOString(), paid_amount: cost }); });
         actions.appendChild(pay);
