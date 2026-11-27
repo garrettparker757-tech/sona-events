@@ -33,3 +33,6 @@
 --    checks payment, and receives Square's payment.updated webhook. Its secrets live in Supabase:
 --    SQUARE_ACCESS_TOKEN, SQUARE_WEBHOOK_SIGNATURE_KEY (optional SQUARE_LOCATION_ID, SQUARE_ENV=sandbox).
 --    Prices in that function must match config.js.
+--  * Square credentials live in private.app_secrets (schema not exposed; read/written only through
+--    get_app_secret / set_app_secret, which only the service role may call). The square function
+--    creates its own payment.updated webhook subscription and stores the signature key there.

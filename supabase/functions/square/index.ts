@@ -3,8 +3,10 @@
 //   POST { action: "status", order_id }  -> asks Square whether it has been paid, and records it
 //   POST { action: "check" }             -> says whether Square is connected (no secrets returned)
 //   Square's own notices (payment.updated) arrive here too, signed with the webhook signature key.
-// Secrets, set in Supabase (Edge Functions > Secrets), never in the code:
+// Secrets, never in the code: read from Edge Function secrets first, then from the database's
+// private.app_secrets table (readable only by this function's service role):
 //   SQUARE_ACCESS_TOKEN, SQUARE_WEBHOOK_SIGNATURE_KEY, optional SQUARE_LOCATION_ID, optional SQUARE_ENV=sandbox
+// The webhook subscription and its signature key are set up automatically on the first "check".
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SITE = "https://sona-events.vercel.app";
@@ -28,8 +30,29 @@ function json(body: unknown, status = 200) {
 }
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-const token = () => Deno.env.get("SQUARE_ACCESS_TOKEN") || "";
-const base = () => (Deno.env.get("SQUARE_ENV") === "sandbox" ? "https://connect.squareupsandbox.com" : "https://connect.squareup.com");
+const secretCache: Record<string, { v: string; at: number }> = {};
+async function secret(name: string): Promise<string> {
+  const env = Deno.env.get(name);
+  if (env) return env;
+  const c = secretCache[name];
+  if (c && Date.now() - c.at < 60_000) return c.v;
+  const { data } = await db.rpc("get_app_secret", { p_name: name });
+  const v = typeof data === "string" ? data : "";
+  secretCache[name] = { v, at: Date.now() };
+  return v;
+}
+async function saveSecret(name: string, value: string) {
+  await db.rpc("set_app_secret", { p_name: name, p_value: value });
+  secretCache[name] = { v: value, at: Date.now() };
+}
+let TOKEN = "";
+const token = () => TOKEN;
+let SANDBOX = false;
+const base = () => (SANDBOX ? "https://connect.squareupsandbox.com" : "https://connect.squareup.com");
+async function loadSecrets() {
+  TOKEN = await secret("SQUARE_ACCESS_TOKEN");
+  SANDBOX = (await secret("SQUARE_ENV")) === "sandbox";
+}
 
 async function square(path: string, init: RequestInit = {}) {
   const res = await fetch(base() + path, {
@@ -46,7 +69,7 @@ async function location() {
   if (locationCache) return locationCache;
   const data = await square("/v2/locations");
   const all = (data.locations || []).filter((l: any) => l.status === "ACTIVE");
-  const want = Deno.env.get("SQUARE_LOCATION_ID");
+  const want = await secret("SQUARE_LOCATION_ID");
   const pick = (want && all.find((l: any) => l.id === want)) || all.find((l: any) => (l.capabilities || []).includes("CREDIT_CARD_PROCESSING")) || all[0];
   if (!pick) throw new Error("NO_LOCATION");
   locationCache = { id: pick.id, name: pick.business_name || pick.name || "Square" };
@@ -124,18 +147,51 @@ async function status(orderId: string) {
   return json({ paid: false, url: o.pay_url, order_no: o.order_no });
 }
 
+/* Make sure Square tells us about payments: one subscription to payment.updated at HOOK_URL,
+   with its signature key stored so notices can be checked. Safe to run again and again. */
+async function ensureWebhook(): Promise<boolean> {
+  if (await secret("SQUARE_WEBHOOK_SIGNATURE_KEY")) return true;
+  try {
+    const list = await square("/v2/webhooks/subscriptions?include_disabled=true");
+    const mine = (list.subscriptions || []).find((s: any) => s.notification_url === HOOK_URL);
+    let key = "";
+    if (mine) {
+      if (!mine.enabled || !(mine.event_types || []).includes("payment.updated")) {
+        await square("/v2/webhooks/subscriptions/" + mine.id, { method: "PUT", body: JSON.stringify({ subscription: { enabled: true, event_types: ["payment.updated"] } }) });
+      }
+      const k = await square("/v2/webhooks/subscriptions/" + mine.id + "/signature-key", { method: "POST", body: JSON.stringify({ idempotency_key: crypto.randomUUID() }) });
+      key = k.signature_key || "";
+    } else {
+      const made = await square("/v2/webhooks/subscriptions", {
+        method: "POST",
+        body: JSON.stringify({
+          idempotency_key: crypto.randomUUID(),
+          subscription: { name: "Sona Events payments", event_types: ["payment.updated"], notification_url: HOOK_URL, api_version: SQUARE_VERSION },
+        }),
+      });
+      key = made.subscription?.signature_key || "";
+    }
+    if (key) await saveSecret("SQUARE_WEBHOOK_SIGNATURE_KEY", key);
+    return !!key;
+  } catch (err) {
+    console.error("webhook setup failed", String(err));
+    return false;
+  }
+}
+
 async function check() {
   if (!token()) return json({ connected: false, reason: "no_token" });
   try {
     const loc = await location();
-    return json({ connected: true, location: loc.name, webhook: !!Deno.env.get("SQUARE_WEBHOOK_SIGNATURE_KEY"), sandbox: Deno.env.get("SQUARE_ENV") === "sandbox" });
+    const webhook = await ensureWebhook();
+    return json({ connected: true, location: loc.name, webhook, sandbox: SANDBOX });
   } catch (err) {
     return json({ connected: false, reason: String(err).includes("401") ? "bad_token" : "error" });
   }
 }
 
 async function validSignature(raw: string, sig: string) {
-  const key = Deno.env.get("SQUARE_WEBHOOK_SIGNATURE_KEY");
+  const key = await secret("SQUARE_WEBHOOK_SIGNATURE_KEY");
   if (!key || !sig) return false;
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const mac = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(HOOK_URL + raw));
@@ -163,6 +219,7 @@ async function webhook(req: Request) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  await loadSecrets();
   if (req.headers.get("x-square-hmacsha256-signature")) return webhook(req);
   const body = await req.json().catch(() => ({}));
   if (body.action === "create") return create(String(body.order_id || ""));
