@@ -68,16 +68,37 @@
         <p class="note" id="events-msg" role="status"></p>
       </section>
       <section class="card">
+        <h2>Staff logins</h2>
+        <ul class="plain" id="staff-list"></ul>
+        <form class="row" id="staff-add-form" novalidate>
+          <input id="staff-add-email" type="email" placeholder="Add someone by email" autocomplete="off" aria-label="Email of the person to add">
+          <button class="btn small" type="submit">Add</button>
+        </form>
+        <div class="card soft" id="staff-temp" hidden>
+          <p id="staff-temp-text"></p>
+          <p class="bigcode" id="staff-temp-pass"></p>
+          <p class="note">This shows once. Give it to them; they sign in with it and can change it below.</p>
+        </div>
+        <details class="fold">
+          <summary>Change my password</summary>
+          <form class="stack" id="pass-form" novalidate>
+            <label for="pass-new">New password (at least 8 characters)<input id="pass-new" type="password" autocomplete="new-password"></label>
+            <button class="btn small" type="submit">Save new password</button>
+          </form>
+        </details>
+        <p class="note" id="staff-msg" role="status"></p>
+      </section>
+      <section class="card">
         <h2>Online payments</h2>
         <p class="note" id="square-status">Checking the Square connection.</p>
       </section>
       <section class="card">
         <h2>Table signs</h2>
-        <p class="note">Each opens in a new tab and prints on one Letter page. The QR sign for an event is inside that event.</p>
+        <p class="note">Each opens as a PDF in a new tab, sized for one Letter page. Print it from there at 100% (on an iPhone: Share, then Print). The QR sign for an event is inside that event.</p>
         <div class="row">
-          <a class="btn small" target="_blank" rel="noopener" href="/sign.html?sign=how">Open "How it works" sign (pay on phone)</a>
-          <a class="btn small" target="_blank" rel="noopener" href="/sign.html?sign=how&amp;pay=table">Open "How it works" sign (pay at table)</a>
-          <a class="btn small" target="_blank" rel="noopener" href="/sign.html?sign=prices">Open price sign</a>
+          <a class="btn small signpdf" target="_blank" rel="noopener" href="/sign.html?sign=how">"How it works" sign PDF (pay on phone)</a>
+          <a class="btn small signpdf" target="_blank" rel="noopener" href="/sign.html?sign=how&amp;pay=table">"How it works" sign PDF (pay at table)</a>
+          <a class="btn small signpdf" target="_blank" rel="noopener" href="/sign.html?sign=prices">Price sign PDF</a>
         </div>
       </section>
     </div>
@@ -105,10 +126,10 @@
       <div class="row">
         <button class="btn small" type="button" id="copy-link">Copy link</button>
         <a class="btn small" id="open-link" target="_blank" rel="noopener">Open guest page</a>
-        <a class="btn small primary" id="sign-qr" target="_blank" rel="noopener">Open QR sign to print</a>
+        <a class="btn small primary signpdf" id="sign-qr" target="_blank" rel="noopener">QR sign PDF to print</a>
         <a class="btn small" id="own-order" target="_blank" rel="noopener">Add an order yourself</a>
-        <a class="btn small market-only" id="sign-how" target="_blank" rel="noopener" href="/sign.html?sign=how">Open "How it works" sign</a>
-        <a class="btn small market-only" target="_blank" rel="noopener" href="/sign.html?sign=prices">Open price sign</a>
+        <a class="btn small market-only signpdf" id="sign-how" target="_blank" rel="noopener" href="/sign.html?sign=how">"How it works" sign PDF</a>
+        <a class="btn small market-only signpdf" target="_blank" rel="noopener" href="/sign.html?sign=prices">Price sign PDF</a>
       </div>
       <p class="note">Customer's phone not cooperating? Use Open guest page and place the order for them on this device.</p>
 
@@ -122,6 +143,7 @@
           <label class="check" for="set-prices"><input id="set-prices" type="checkbox">Show prices to guests and track who has paid</label>
           <label class="check" for="set-online"><input id="set-online" type="checkbox">Guests pay online at the end with Square (Apple Pay, Google Pay, card)</label>
           <p class="note" id="set-online-note"></p>
+          <label class="check" for="set-tips"><input id="set-tips" type="checkbox">Offer an optional tip on the payment screen</label>
           <button class="btn small" type="submit" id="settings-btn">Save settings</button>
           <p class="note" id="settings-msg" role="status"></p>
         </form>
@@ -152,6 +174,18 @@
             <button class="btn small" type="button" id="ov-remove" hidden>Remove overlay</button>
           </div>
           <p class="note" id="ov-msg" role="status"></p>
+        </div>
+      </details>
+
+      <details class="fold" id="sum-fold">
+        <summary>End-of-night summary</summary>
+        <div class="stack">
+          <dl class="summary" id="sum-list"></dl>
+          <div id="sum-lists"></div>
+          <div class="row">
+            <button class="btn small" type="button" id="sum-copy">Copy summary</button>
+          </div>
+          <p class="note" id="sum-msg" role="status">Counts everything for this event so far, and updates as orders come in.</p>
         </div>
       </details>
 
@@ -284,7 +318,17 @@
   </div>
 </div>
 
-<!-- Printed signs. Only the one chosen with a Print button shows on paper. -->
+<!-- A table sign made into a PDF: opened in a new tab, or from these buttons in the home screen app. -->
+<div class="card soft ready signready" id="sign-ready" hidden role="status">
+  <p id="sign-text"></p>
+  <div class="row">
+    <button class="btn primary" type="button" id="sign-share" hidden>Print or share PDF</button>
+    <a class="btn primary" id="sign-open" target="_blank" rel="noopener" hidden>Open PDF to print</a>
+    <a class="btn small" id="sign-save" hidden>Save PDF</a>
+    <button class="btn small" type="button" id="sign-close">Close</button>
+  </div>
+  <p class="sub" id="sign-hint"></p>
+</div>
 <script>if (typeof globalThis === 'undefined') { window.globalThis = window; }</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

@@ -46,6 +46,7 @@
         : 'Magnets take 10-15 minutes. Pick them up at the table under the name ') + saved.name + '. You can order more below.';
       $('last-order').hidden = false;
       $('last-pay').hidden = true;
+      if (saved.id) track(saved.id, true);
       if (saved.payId) {
         sb.rpc('order_payment', { p_order_id: saved.payId }).then(function (r) {
           var p = r.data && r.data[0];
@@ -80,10 +81,11 @@
     show('view-done');
     state.fromSquare = true;
     var name = saved && saved.name ? ', ' + saved.name : '';
-    function paid() {
+    function paid(st) {
       $('done-hello').textContent = 'Paid. Thank you' + name + '!';
-      $('done-text').textContent = doneText(saved && saved.count, true);
+      $('done-text').textContent = doneText(saved && saved.count, true) + (st && st.tip > 0 ? ' And thank you so much for the tip!' : '');
       $('pay-again').hidden = true;
+      track(orderId);
     }
     async function ask() {
       var st = {};
@@ -95,7 +97,7 @@
     var st = {};
     for (var i = 0; i < 8; i++) {
       st = await ask();
-      if (st.paid) { paid(); return; }
+      if (st.paid) { paid(st); return; }
       await wait(2500);
     }
     $('done-hello').textContent = 'We have not received your payment yet';
@@ -106,9 +108,69 @@
       await wait(5000);
       if (document.hidden) continue;
       st = await ask();
-      if (st.paid) { paid(); return; }
+      if (st.paid) { paid(st); return; }
     }
   }
+
+  /* ---------- live order status: in the queue, printing, ready ----------
+     The guest's page asks every few seconds while it is open. Staff tap Ready on their side. */
+  var tracking = { id: null, timer: null, wasReady: false, since: 0, compact: false };
+  function progressText(p) {
+    if (p.status === 'done') return { step: 3, line: 'Picked up. Enjoy your magnets!', sub: '' };
+    if (p.ready) return { step: 3, line: 'Your magnets are ready!', sub: 'Come to the Sona Magnets table and give us your name or order number ' + p.order_no + '.' };
+    if (p.pay_status === 'pending' && !p.paid) return { step: 1, line: 'Waiting for your payment', sub: 'Your magnets start once you have paid.' };
+    if (p.printed) return { step: 2, line: 'Your magnets are being made', sub: 'We print, cut and press each one. This page shows Ready when they are done.' };
+    var ahead = p.ahead_orders || 0;
+    return { step: 1, line: ahead ? (ahead === 1 ? '1 order ahead of yours' : ahead + ' orders ahead of yours') : 'You are next in line',
+      sub: 'Keep this page open. It changes to Ready when your magnets are done.' };
+  }
+  function showProgress(p, compact) {
+    var t = progressText(p), ready = p.ready && p.status !== 'done';
+    if (compact) {
+      $('last-status').hidden = false;
+      $('last-status').textContent = t.line;
+      $('last-status').className = 'track-line small' + (ready ? ' ready' : '');
+    } else {
+      $('track').hidden = false;
+      $('track').className = 'track' + (ready ? ' is-ready' : '');
+      [1, 2, 3].forEach(function (i) { $('tr-' + i).className = i < t.step ? 'on' : i === t.step ? 'now' : ''; });
+      $('track-line').textContent = t.line;
+      $('track-sub').textContent = t.sub;
+    }
+    if (ready && !tracking.wasReady) {
+      tracking.wasReady = true;
+      document.title = 'Ready! | Sona Magnets';
+      try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (err) {}
+    }
+  }
+  function track(orderId, compact) {
+    clearTimeout(tracking.timer);
+    var wasReady = tracking.id === orderId && tracking.wasReady;
+    tracking = { id: orderId, timer: null, wasReady: wasReady, since: Date.now(), compact: !!compact };
+    var mine = tracking;
+    async function tick() {
+      if (tracking !== mine) return;
+      if (!document.hidden) {
+        var r = null;
+        try { r = await sb.rpc('order_progress', { p_order_id: orderId }); } catch (err) { r = null; }
+        if (tracking !== mine) return;
+        var p = r && r.data && r.data[0];
+        if (p) {
+          showProgress(p, mine.compact);
+          if (p.status === 'done') return;   /* picked up: nothing more to watch */
+        }
+      }
+      /* every 6 seconds for the first hour, then every 30 seconds, for up to 8 hours */
+      var age = Date.now() - mine.since;
+      if (age > 8 * 3600 * 1000) return;
+      mine.timer = setTimeout(tick, age < 3600 * 1000 ? 6000 : 30000);
+    }
+    tick();
+  }
+  /* coming back to the page: check straight away */
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && tracking.id) track(tracking.id, tracking.compact);
+  });
 
   /* ---------- an unfinished order is kept on this device ----------
      Photos and every adjustment are written to the browser's own storage as you go, so a closed tab,
@@ -461,6 +523,7 @@
     $('check-pay').textContent = online ? 'You pay on the next screen.' : 'You pay at the table.';
     $('submit').textContent = STAFF ? 'Add to the print queue' : online ? 'Pay ' + C.money(cost) + ' and make my magnets' : 'Yes, make my magnets';
     $('pay-methods').hidden = !online;
+    $('tip-note').hidden = !(online && state.event.tips);
     note('check-msg', '');
     show('view-check', 'check-title');
   }
@@ -556,7 +619,8 @@
           if (ps.data && ps.data[0] && ps.data[0].pay_status === 'pending') online = true;
         } catch (err) {}
       }
-      if (!STAFF) try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, name: name, count: count, at: Date.now(), payId: online ? orderId : null })); } catch (err) {}
+      if (!STAFF) try { localStorage.setItem(storeKey(), JSON.stringify({ no: res.data, id: orderId, name: name, count: count, at: Date.now(), payId: online ? orderId : null })); } catch (err) {}
+      if (!STAFF && !online) track(orderId);
       if (STAFF) {
         $('done-hello').textContent = 'Added to the print queue';
         $('done-text').textContent = plural(count, 'magnet') + ' for "' + name + '". It is on the staff page now, ready to print with everything else.';
@@ -571,6 +635,7 @@
           if (pay.url) { location.href = pay.url; return; }
         } catch (err) {}
         $('done-pay').textContent = 'The payment page did not open, so please pay at the table.';
+        track(orderId);
       }
       $('last-order').hidden = true;
       $('sending').hidden = true;
@@ -602,6 +667,7 @@
   $('again').addEventListener('click', function () {
     /* after coming back from Square the page skipped its usual set-up, so start it fresh */
     if (state.fromSquare) { location.assign(location.pathname); return; }
+    $('track').hidden = true;
     $('guest-name').value = ''; $('guest-note').value = ''; $('note-wrap').hidden = true; $('note-open').hidden = false; renderPhotos(); showLastOrder(); show('view-photos', 'photos-title'); });
 
   (async function start() {

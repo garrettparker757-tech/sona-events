@@ -16,11 +16,17 @@
 <body class="signpage">
 <div class="signbar">
   <div class="row">
-    <button class="btn primary" type="button" id="print">Print this sign</button>
+    <button class="btn primary" type="button" id="print">Open as PDF to print</button>
     <a class="btn small" href="/admin">Back to the staff page</a>
   </div>
-  <p class="note" id="sign-tip">On an iPhone or iPad you can also tap the Share button, then Print. Use Letter paper at 100%.</p>
-  <p class="note bad" id="sign-msg" role="status"></p>
+  <div class="row" id="pdf-row" hidden>
+    <button class="btn small" type="button" id="pdf-share" hidden>Print or share PDF</button>
+    <a class="btn small" id="pdf-open" target="_blank" rel="noopener">Open PDF again</a>
+    <a class="btn small" id="pdf-save">Save PDF</a>
+    <button class="btn small" type="button" id="plain-print">Print this page instead</button>
+  </div>
+  <p class="note" id="sign-tip">The PDF opens in a new tab. Print it on Letter paper at 100% (Actual size). On an iPhone or iPad: tap Share, then Print.</p>
+  <p class="note" id="sign-msg" role="status"></p>
 </div>
 <div class="signfit" id="fit">
 <section class="poster" hidden id="poster-qr-sign" aria-hidden="true">
@@ -63,7 +69,11 @@
   <p class="poster-foot">Sona Magnets Co. &middot; made in RVA</p>
 </section>
 </div>
+<script>if (typeof globalThis === 'undefined') { window.globalThis = window; }</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="/config.js"></script>
 <script src="/common.js"></script>
 <script src="/sign.js"></script>

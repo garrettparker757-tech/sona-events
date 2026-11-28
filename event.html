@@ -31,6 +31,7 @@
   <section class="card last-order" id="last-order" hidden>
     <p><strong id="last-no"></strong> <span id="last-text"></span></p>
     <a class="btn small primary" id="last-pay" hidden>Finish paying</a>
+    <p class="track-line small" id="last-status" hidden aria-live="polite"></p>
   </section>
 
   <!-- Step 1: photos -->
@@ -96,6 +97,7 @@
       </div>
       <button class="btn primary wide big" type="button" id="submit">Yes, make my magnets</button>
       <p class="paynote" id="pay-methods" hidden>Apple Pay, Google Pay, Cash App Pay or any card, on a secure Square page.</p>
+      <p class="paynote" id="tip-note" hidden>You will see an optional tip on the next screen. Tips are never expected, but every one helps our small business.</p>
       <button class="btn wide" type="button" id="check-back">Change a photo</button>
       <p class="note" id="check-msg" role="alert"></p>
     </div>
@@ -115,6 +117,15 @@
       <p class="note">Or pay at the Sona Magnets table and tell us your order number.</p>
     </div>
     <p id="done-text"></p>
+    <div class="track" id="track" hidden aria-live="polite">
+      <ol class="track-steps">
+        <li id="tr-1">Order in</li>
+        <li id="tr-2">Printing</li>
+        <li id="tr-3">Ready</li>
+      </ol>
+      <p class="track-line" id="track-line"></p>
+      <p class="note" id="track-sub"></p>
+    </div>
     <button class="btn" type="button" id="again">Order more magnets</button>
   </section>
 

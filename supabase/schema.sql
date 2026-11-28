@@ -24,6 +24,8 @@
 --    order_photos and events are in the supabase_realtime publication so staff pages update at once.
 --  * Print sheets are saved to the private "sheets" bucket (PDF only, staff only) and opened through a
 --    link that lasts 12 hours, so a phone can open them in a new tab. They are removed with the photos.
+--    Table signs are made into a one-page Letter PDF the same way (sign.html drawn out of sight, then
+--    saved under the event's folder, or under signs/ where they are cleared after two days).
 --  * order_photos.crop_fit: the whole photo sits on the front with white filling the rest, instead of a
 --    square crop. fit_zoom / fit_x / fit_y zoom and move a fitted photo and are kept apart from the
 --    square crop (crop_zoom / crop_x / crop_y), so switching between the two loses neither.

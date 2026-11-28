@@ -79,7 +79,7 @@ async function location() {
 async function loadOrder(orderId: string) {
   if (!/^[0-9a-f-]{36}$/i.test(orderId || "")) return null;
   const { data } = await db.from("orders")
-    .select("id, order_no, guest_name, paid_at, pay_status, pay_url, pay_amount, square_order_id, events(slug, name, pay_online, show_prices), order_photos(qty)")
+    .select("id, order_no, guest_name, paid_at, pay_status, pay_url, pay_amount, tip_amount, square_order_id, events(slug, name, pay_online, show_prices, tips), order_photos(qty)")
     .eq("id", orderId).maybeSingle();
   return data as any;
 }
@@ -87,9 +87,11 @@ async function loadOrder(orderId: string) {
 async function markPaid(o: any, payment: any) {
   if (o.paid_at) return;
   const cents = payment?.total_money?.amount ?? payment?.amount_money?.amount;
+  const tip = payment?.tip_money?.amount;
   await db.from("orders").update({
     paid_at: new Date().toISOString(),
     paid_amount: cents != null ? cents / 100 : o.pay_amount,
+    tip_amount: tip ? tip / 100 : null,
     pay_status: "paid",
     square_payment_id: payment?.id || null,
   }).eq("id", o.id).is("paid_at", null);
@@ -103,6 +105,7 @@ async function create(orderId: string) {
   const count = (o.order_photos || []).reduce((n: number, p: any) => n + (p.qty || 0), 0);
   const amount = priceFor(count);
   if (!ev?.pay_online || !ev?.show_prices || !amount) return json({ error: "NOT_ONLINE" }, 400);
+  const tipsOn = ev.tips !== false;
   if (o.pay_url && Number(o.pay_amount) === amount) return json({ url: o.pay_url, amount });
   try {
     if (!token()) throw new Error("NOT_CONNECTED");
@@ -110,13 +113,18 @@ async function create(orderId: string) {
     const res = await square("/v2/online-checkout/payment-links", {
       method: "POST",
       body: JSON.stringify({
-        idempotency_key: o.id + "-" + amount,
+        idempotency_key: o.id + "-" + amount + (tipsOn ? "-t" : ""),
         quick_pay: {
           name: "Sona Magnets order #" + o.order_no + " (" + count + (count === 1 ? " magnet)" : " magnets)"),
           price_money: { amount: Math.round(amount * 100), currency: "USD" },
           location_id: loc.id,
         },
-        checkout_options: { redirect_url: SITE + "/e/" + ev.slug + "?paid=" + o.id, ask_for_shipping_address: false },
+        checkout_options: {
+          redirect_url: SITE + "/e/" + ev.slug + "?paid=" + o.id,
+          ask_for_shipping_address: false,
+          // optional tip: the guest picks it (or not) on Square's page; the choices come from the Square tip settings
+          allow_tipping: tipsOn,
+        },
         payment_note: "Sona Events " + ev.name + ", order #" + o.order_no + " for " + o.guest_name + " (" + o.id + ")",
       }),
     });
@@ -134,14 +142,14 @@ async function create(orderId: string) {
 async function status(orderId: string) {
   const o = await loadOrder(orderId);
   if (!o) return json({ error: "NOT_FOUND" }, 404);
-  if (o.paid_at) return json({ paid: true, order_no: o.order_no });
+  if (o.paid_at) return json({ paid: true, order_no: o.order_no, tip: Number(o.tip_amount) || 0 });
   if (!o.square_order_id || !token()) return json({ paid: false, url: o.pay_url, order_no: o.order_no });
   try {
     const so = (await square("/v2/orders/" + o.square_order_id)).order;
     for (const t of so?.tenders || []) {
       if (!t.payment_id) continue;
       const pay = (await square("/v2/payments/" + t.payment_id)).payment;
-      if (pay?.status === "COMPLETED") { await markPaid(o, pay); return json({ paid: true, order_no: o.order_no }); }
+      if (pay?.status === "COMPLETED") { await markPaid(o, pay); return json({ paid: true, order_no: o.order_no, tip: (pay?.tip_money?.amount || 0) / 100 }); }
     }
   } catch (err) { console.error("status failed", String(err)); }
   return json({ paid: false, url: o.pay_url, order_no: o.order_no });

@@ -190,6 +190,7 @@
   }
   async function loadEvents() {
     if (!squareState) checkSquare();
+    loadStaff();
     var res = await sb.from('events').select('*').order('created_at', { ascending: false });
     if (lostSession(res.error)) return;
     if (res.error) { note('events-msg', 'Could not load events. Reload the page.', 'bad'); return; }
@@ -306,6 +307,8 @@
     $('set-online').checked = !!ev.pay_online;
     $('set-online').disabled = ev.show_prices === false;
     $('set-online-note').textContent = ev.show_prices === false ? 'Online payment needs prices shown to guests.' : squareLine();
+    $('set-tips').checked = ev.tips !== false;
+    $('set-tips').disabled = !ev.pay_online || ev.show_prices === false;
     var special = kindOf(ev) === 'private';
     Array.prototype.forEach.call(document.querySelectorAll('#view-event .market-only'), function (b) { b.hidden = special; });
     $('st-unpaid').parentNode.hidden = !priced(); $('st-collected').parentNode.hidden = !priced();
@@ -341,6 +344,7 @@
     clearSheets(ev.id, 24 * 3600 * 1000).catch(function () {});
     renderEventInfo(); renderStatus();
     $('overlay-fold').open = kindOf(ev) === 'private';
+    printLog = []; loadPrintLog();
     loadOverlay(ev);
     purgeReset(); note('purge-msg', ''); note('settings-msg', '');
     $('orders').replaceChildren(); $('orders-empty').textContent = '';
@@ -388,7 +392,7 @@
     if (!name) { note('settings-msg', 'The event needs a name.', 'bad'); return; }
     if (!(max >= 1 && max <= 100)) { note('settings-msg', 'Magnets per order must be between 1 and 100.', 'bad'); return; }
     var btn = $('settings-btn'); btn.disabled = true;
-    var res = await sb.from('events').update({ name: name, max_magnets: max, welcome: $('set-welcome').value.trim(), ask_contact: $('set-contact').checked, show_prices: $('set-prices').checked, pay_online: $('set-online').checked }).eq('id', ev.id).select().single();
+    var res = await sb.from('events').update({ name: name, max_magnets: max, welcome: $('set-welcome').value.trim(), ask_contact: $('set-contact').checked, show_prices: $('set-prices').checked, pay_online: $('set-online').checked, tips: $('set-tips').checked }).eq('id', ev.id).select().single();
     btn.disabled = false;
     if (lostSession(res.error)) return;
     if (res.error) { note('settings-msg', 'The settings did not save. Try again.', 'bad'); return; }
@@ -478,7 +482,7 @@
     var seq = ++state.loadSeq;
     var both = await Promise.all([
       sb.from('orders')
-        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, pay_status, square_payment_id, staff_made, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, fit_zoom, fit_x, fit_y, claimed_at, claimed_by)')
+        .select('id, order_no, guest_name, contact, note, status, created_at, paid_at, paid_amount, pay_status, square_payment_id, staff_made, ready_at, tip_amount, order_photos(id, path, qty, printed_at, created_at, crop_zoom, crop_x, crop_y, crop_fit, fit_zoom, fit_x, fit_y, claimed_at, claimed_by)')
         .eq('event_id', ev.id).order('order_no', { ascending: true }),
       sb.from('events').select('*').eq('id', ev.id).maybeSingle()
     ]);
@@ -653,6 +657,7 @@
   $('order-search').addEventListener('input', function () { state.query = this.value.trim().toLowerCase(); renderOrders(); });
 
   function renderOrders() {
+    try { renderSummary(); } catch (err) {}
     var rank = { 'new': 0, printed: 1, done: 2 }, per = layout().per;
     var waiting = tally(waitingRows()) + heldCount() + mineCount(), printedCount = 0;
     state.orders.forEach(function (o) { o.order_photos.forEach(function (p) { if (p.printed_at) printedCount += p.qty; }); });
@@ -700,6 +705,8 @@
       var label = o.status === 'new' ? (awaitingPay(o) ? 'Held until paid' : 'Waiting to print') : o.status === 'printed' ? 'Printed' : 'Picked up';
       var busyElsewhere = o.status === 'new' && o.order_photos.some(heldElsewhere);
       meta.appendChild(el('span', 'chip ' + (busyElsewhere ? 'held' : o.status), busyElsewhere ? 'Printing on another device' : label));
+      if (o.ready_at && o.status !== 'done') meta.appendChild(el('span', 'chip ready', 'Ready, guest told'));
+      if (o.tip_amount > 0) meta.appendChild(el('span', 'chip paid', C.money(Number(o.tip_amount)) + ' tip'));
       head.appendChild(meta);
       li.appendChild(head);
 
@@ -735,8 +742,20 @@
       var one = el('button', 'btn small' + (o.status === 'new' ? ' primary' : ''), printed ? 'Print this order again' : 'Print this order'); one.type = 'button';
       one.addEventListener('click', function () { makeSheets('order', o); });
       actions.appendChild(one);
+      /* Ready: the guest's phone shows "Your magnets are ready" */
+      if (o.status !== 'done' && !o.ready_at) {
+        var ready = el('button', 'btn small' + (printed ? ' primary' : ''), 'Ready for pickup'); ready.type = 'button';
+        ready.title = "Tells the guest's phone their magnets are ready";
+        ready.addEventListener('click', function () { setOrder(o, { ready_at: new Date().toISOString() }); });
+        actions.appendChild(ready);
+      }
+      if (o.status !== 'done' && o.ready_at) {
+        var notReady = el('button', 'btn small', 'Not ready yet'); notReady.type = 'button';
+        notReady.addEventListener('click', function () { setOrder(o, { ready_at: null }); });
+        actions.appendChild(notReady);
+      }
       if (o.status !== 'done') {
-        var done = el('button', 'btn small' + (o.status === 'printed' ? ' primary' : ''), 'Picked up'); done.type = 'button';
+        var done = el('button', 'btn small' + (o.ready_at ? ' primary' : ''), 'Picked up'); done.type = 'button';
         done.addEventListener('click', function () { setOrder(o, { status: 'done' }); });
         actions.appendChild(done);
       } else {
@@ -764,6 +783,131 @@
       ul.appendChild(li);
     });
   }
+  /* ---------- end-of-night summary ---------- */
+  var printLog = [];
+  async function loadPrintLog() {
+    var ev = state.event; if (!ev) return;
+    var r = await sb.from('print_log').select('sheets, magnets').eq('event_id', ev.id);
+    if (!r.error && state.event && state.event.id === ev.id) { printLog = r.data || []; renderSummary(); }
+  }
+  function summaryData() {
+    var d = { orders: 0, guestOrders: 0, staffOrders: 0, magnets: 0, staffMagnets: 0, pickedUp: 0,
+      online: 0, onlineN: 0, tips: 0, table: 0, tableN: 0, owed: 0, unpaid: [], waiting: [], notPicked: [] };
+    var priced = state.event.show_prices !== false;
+    state.orders.forEach(function (o) {
+      var n = o.order_photos.reduce(function (t, p) { return t + p.qty; }, 0);
+      d.orders++; d.magnets += n;
+      if (o.staff_made) { d.staffOrders++; d.staffMagnets += n; } else d.guestOrders++;
+      if (o.status === 'done') d.pickedUp++; else d.notPicked.push(o);
+      if (o.paid_at) {
+        var amt = Number(o.paid_amount) || 0;
+        if (o.square_payment_id) { d.online += amt; d.onlineN++; d.tips += Number(o.tip_amount) || 0; }
+        else { d.table += amt; d.tableN++; }
+      } else if (priced && !o.staff_made) {
+        if (awaitingPay(o)) d.waiting.push(o);
+        else { d.unpaid.push(o); d.owed += C.priceFor(n) || 0; }
+      }
+    });
+    d.sheets = printLog.reduce(function (t, r) { return t + (r.sheets || 0); }, 0);
+    d.printRuns = printLog.length;
+    d.priced = priced;
+    return d;
+  }
+  function who(o) { return '#' + o.order_no + ' ' + o.guest_name; }
+  function renderSummary() {
+    if (!state.event || !$('sum-fold').open) return;
+    var d = summaryData(), dl = $('sum-list'), lists = $('sum-lists');
+    dl.replaceChildren(); lists.replaceChildren();
+    function row(k, v) { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); }
+    row('Orders', d.orders + (d.staffOrders ? ' (' + d.staffOrders + ' staff)' : ''));
+    row('Magnets', String(d.magnets));
+    row('Picked up', d.pickedUp + ' of ' + d.orders);
+    row('Paper used', plural(d.sheets, 'sheet') + (d.printRuns ? ', including reprints' : ''));
+    if (d.priced) {
+      row('Paid online', C.money(d.online) + ' (' + plural(d.onlineN, 'order') + ')' + (d.tips ? ', includes ' + C.money(d.tips) + ' in tips' : ''));
+      row('Paid at the table', C.money(d.table) + ' (' + plural(d.tableN, 'order') + ')');
+      row('Total taken', C.money(d.online + d.table));
+      row('Still owed', d.unpaid.length ? C.money(d.owed) + ' (' + plural(d.unpaid.length, 'order') + ')' : 'Nothing');
+    }
+    function list(title, arr, extra) {
+      if (!arr.length) return;
+      lists.appendChild(el('p', 'note', title));
+      var ul = el('ul', 'sumlist');
+      arr.forEach(function (o) { ul.appendChild(el('li', null, who(o) + (extra ? extra(o) : ''))); });
+      lists.appendChild(ul);
+    }
+    list('Not paid yet:', d.unpaid, function (o) { var n = o.order_photos.reduce(function (t, p) { return t + p.qty; }, 0); var c = C.priceFor(n); return c != null ? ', ' + C.money(c) : ''; });
+    list('Started paying online but never finished:', d.waiting);
+    list('Not picked up yet:', d.notPicked, function (o) { return o.ready_at ? ' (ready)' : ''; });
+  }
+  function summaryText() {
+    var d = summaryData(), lines = [state.event.name + ' summary, ' + new Date().toLocaleDateString()];
+    lines.push('Orders: ' + d.orders + (d.staffOrders ? ' (' + d.staffOrders + ' staff)' : ''), 'Magnets: ' + d.magnets,
+      'Picked up: ' + d.pickedUp + ' of ' + d.orders, 'Paper used: ' + plural(d.sheets, 'sheet'));
+    if (d.priced) {
+      lines.push('Paid online: ' + C.money(d.online) + ' (' + plural(d.onlineN, 'order') + ')' + (d.tips ? ', includes ' + C.money(d.tips) + ' in tips' : ''),
+        'Paid at the table: ' + C.money(d.table) + ' (' + plural(d.tableN, 'order') + ')',
+        'Total taken: ' + C.money(d.online + d.table),
+        'Still owed: ' + (d.unpaid.length ? C.money(d.owed) + ' (' + d.unpaid.map(who).join(', ') + ')' : 'nothing'));
+    }
+    if (d.notPicked.length) lines.push('Not picked up: ' + d.notPicked.map(who).join(', '));
+    return lines.join('\n');
+  }
+  $('sum-fold').addEventListener('toggle', function () { if (this.open) { renderSummary(); loadPrintLog(); } });
+  $('sum-copy').addEventListener('click', async function () {
+    var text = summaryText();
+    try { await navigator.clipboard.writeText(text); note('sum-msg', 'Copied. Paste it into a text or your notes.', 'good'); }
+    catch (err) {
+      try { if (navigator.share) { await navigator.share({ text: text }); return; } } catch (e) {}
+      note('sum-msg', 'Copying is blocked here. Long-press the numbers above to copy them instead.', 'bad');
+    }
+  });
+
+  /* ---------- staff logins ---------- */
+  async function loadStaff() {
+    var r = await sb.functions.invoke('staff-admin', { body: { action: 'list' } });
+    var ul = $('staff-list'); ul.replaceChildren();
+    if (r.error || !r.data || !r.data.staff) { note('staff-msg', 'Could not load the staff list.', 'bad'); return; }
+    r.data.staff.forEach(function (s) {
+      var li = el('li');
+      li.appendChild(el('span', null, s.email + (s.me ? ' (you)' : '')));
+      if (!s.me) {
+        var b = el('button', 'btn small' + (s.has_login ? '' : ' primary'), s.has_login ? 'Reset password' : 'Create login'); b.type = 'button';
+        b.addEventListener('click', function () { staffLogin(s.email, b); });
+        li.appendChild(b);
+      }
+      ul.appendChild(li);
+    });
+  }
+  async function staffLogin(email, btn) {
+    if (btn) btn.disabled = true;
+    note('staff-msg', 'Setting it up.');
+    var r = await sb.functions.invoke('staff-admin', { body: { action: 'login', email: email } });
+    if (btn) btn.disabled = false;
+    if (r.error || !r.data || !r.data.password) { note('staff-msg', 'That did not work. Check the email and try again.', 'bad'); return; }
+    $('staff-temp-text').textContent = 'Temporary password for ' + email + ':';
+    $('staff-temp-pass').textContent = r.data.password;
+    $('staff-temp').hidden = false;
+    note('staff-msg', 'They sign in at sona-events.vercel.app/admin with their email and this password.', 'good');
+    loadStaff();
+  }
+  $('staff-add-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var email = $('staff-add-email').value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { note('staff-msg', 'Type a full email address.', 'bad'); return; }
+    $('staff-add-email').value = '';
+    await staffLogin(email, null);
+  });
+  $('pass-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var p = $('pass-new').value;
+    if (p.length < 8) { note('staff-msg', 'Use at least 8 characters.', 'bad'); return; }
+    var r = await sb.auth.updateUser({ password: p });
+    $('pass-new').value = '';
+    if (lostSession(r.error)) return;
+    note('staff-msg', r.error ? 'The password did not change. Try again.' : 'Password changed. Use it next time you sign in.', r.error ? 'bad' : 'good');
+  });
+
   async function setOrder(o, patch) {
     var r = await sb.from('orders').update(patch).eq('id', o.id);
     if (lostSession(r.error)) return;
@@ -1129,7 +1273,7 @@
       /* a normal web address opens in a new tab on every phone; the copy held in this page is the fallback */
       var link = await saveSheet(out.blob), href = link || url, opened = false;
       if (tab && !tab.closed) { try { tab.location.replace(href); opened = true; } catch (err) { opened = false; } }
-      state.pending = { rows: rows, url: url, marked: false, claimed: claimed, claimedAt: Date.now(), file: pdfFile(out.blob) };
+      state.pending = { rows: rows, url: url, marked: false, claimed: claimed, claimedAt: Date.now(), file: pdfFile(out.blob), sheets: out.sheets, magnets: out.magnets };
       /* From the home screen app the phone's own share sheet is the dependable way to reach Print. */
       var shareable = canSharePdf(state.pending.file);
       $('ready-share').hidden = !shareable;
@@ -1151,13 +1295,14 @@
     }
     state.busy = false;
   }
-  function openTab() {
+  function openTab(what) {
     if (asApp()) return null;   /* the home screen app has no tabs: it shows the Open and Print buttons instead */
+    what = what || 'sheet';
     try {
       var w = window.open('', '_blank');
       if (!w) return null;
-      w.document.write('<!DOCTYPE html><title>Sona Magnets sheet</title><meta name="viewport" content="width=device-width, initial-scale=1">' +
-        '<body style="margin:0;padding:32px;font:600 20px system-ui,sans-serif;color:#1B1F3B;background:#FDF8EE">Building your sheet. One moment.' +
+      w.document.write('<!DOCTYPE html><title>Sona Magnets ' + what + '</title><meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<body style="margin:0;padding:32px;font:600 20px system-ui,sans-serif;color:#1B1F3B;background:#FDF8EE">Building your ' + what + '. One moment.' +
         '<p id="slow" hidden style="font-weight:400">Taking a while? Close this tab, go back to the Sona Magnets tab and press Open PDF to print.</p>' +
         '<script>setTimeout(function () { document.getElementById("slow").hidden = false; }, 12000);<\/script></body>');
       w.document.close();
@@ -1166,10 +1311,11 @@
   }
   function closeTab(w) { try { if (w && !w.closed) w.close(); } catch (err) {} }
   /* Saves the sheet where only staff can reach it and returns a link that works for 12 hours. */
-  function saveSheet(blob) {
+  function saveSheet(blob, folder) {
     var ev = state.event;
+    folder = folder || (ev && ev.id) || 'signs';
     var work = (async function () {
-      var path = ev.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.pdf';
+      var path = folder + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.pdf';
       var up = await sb.storage.from('sheets').upload(path, blob, { contentType: 'application/pdf', upsert: false });
       if (up.error) return null;
       var signed = await sb.storage.from('sheets').createSignedUrl(path, 12 * 3600);
@@ -1193,6 +1339,9 @@
       return;
     }
     $('ready-mark').hidden = true;
+    /* count the paper for the end-of-night summary */
+    sb.from('print_log').insert({ event_id: state.event.id, sheets: pend.sheets || 0, magnets: pend.magnets || 0, device: DEVICE })
+      .then(function () { loadPrintLog(); }, function () {});
     var finished = [];
     pend.rows.forEach(function (r) {
       var o = r.order;
@@ -1204,8 +1353,8 @@
   $('print-one').addEventListener('click', function () { makeSheets('full'); });
   $('print-all').addEventListener('click', function () { makeSheets('all'); });
   /* The links open or save the PDF by themselves; marking happens alongside. */
-  function pdfFile(blob) {
-    try { return new File([blob], 'sona-magnets-sheets.pdf', { type: 'application/pdf' }); } catch (err) { return null; }
+  function pdfFile(blob, name) {
+    try { return new File([blob], name || 'sona-magnets-sheets.pdf', { type: 'application/pdf' }); } catch (err) { return null; }
   }
   function canSharePdf(file) {
     try { return !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })); } catch (err) { return false; }
@@ -1222,6 +1371,66 @@
   $('ready-mark').addEventListener('click', function () { markPending(); });
   $('ready-discard').addEventListener('click', function () { discardPending(); renderOrders(); });
   $('ready-done').addEventListener('click', function () { $('ready').hidden = true; renderOrders(); });
+
+  /* ---------- table signs: one tap makes the sign a PDF and opens it in a new tab ---------- */
+  var signState = { busy: false, file: null, url: null };
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a.signpdf') : null;
+    if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var href = a.getAttribute('href');
+    if (!href) return;
+    e.preventDefault();
+    openSign(href, a.id === 'sign-qr' ? 'QR sign' : /prices/.test(href) ? 'price sign' : '"How it works" sign');
+  });
+  function signPanel(text, hint) {
+    $('sign-text').textContent = text; $('sign-hint').textContent = hint || '';
+    $('sign-ready').hidden = false;
+  }
+  async function openSign(href, label) {
+    if (signState.busy) return;
+    signState.busy = true;
+    var tab = openTab('sign');
+    if (signState.url) { try { URL.revokeObjectURL(signState.url); } catch (err) {} }
+    signState.file = null; signState.url = null;
+    $('sign-share').hidden = true; $('sign-open').hidden = true; $('sign-save').hidden = true;
+    signPanel('Making the ' + label + ' PDF. One moment.');
+    try {
+      var buf = await C.signPdf(href);
+      var blob = new Blob([buf], { type: 'application/pdf' }), url = URL.createObjectURL(blob);
+      var inEvent = !$('view-event').hidden && state.event;
+      var link = await saveSheet(blob, inEvent ? state.event.id : 'signs'), go = link || url, opened = false;
+      if (!inEvent) tidySigns();
+      if (tab && !tab.closed) { try { tab.location.replace(go); opened = true; } catch (err) { opened = false; } }
+      signState.url = url; signState.file = pdfFile(blob, 'sona-magnets-' + label.replace(/[^a-z]+/gi, '-').toLowerCase().replace(/^-|-$/g, '') + '.pdf');
+      var shareable = canSharePdf(signState.file);
+      $('sign-share').hidden = !shareable;
+      $('sign-share').className = 'btn' + (asApp() ? ' primary' : ' small');
+      $('sign-open').hidden = false; $('sign-open').href = go;
+      $('sign-open').className = 'btn' + (shareable && asApp() ? ' small' : ' primary');
+      $('sign-open').textContent = opened ? 'Open PDF again' : 'Open PDF to print';
+      $('sign-save').hidden = false; $('sign-save').href = url; $('sign-save').download = signState.file ? signState.file.name : 'sona-magnets-sign.pdf';
+      signPanel(opened ? 'The ' + label + ' opened as a PDF in a new tab.' : 'The ' + label + ' PDF is ready.',
+        'Print it at 100% (Actual size) on Letter paper. On an iPhone: open the PDF, tap Share, then Print.');
+    } catch (err) {
+      closeTab(tab);
+      $('sign-open').hidden = false; $('sign-open').href = href; $('sign-open').className = 'btn small'; $('sign-open').textContent = 'Open the sign page instead';
+      signPanel('The ' + label + ' PDF could not be made. Check the connection and try again.');
+    }
+    signState.busy = false;
+  }
+  /* Signs made outside an event are kept two days, long enough to print, then cleared. */
+  function tidySigns() {
+    sb.storage.from('sheets').list('signs', { limit: 200 }).then(function (r) {
+      var old = (r.data || []).filter(function (f) { var t = when(f.created_at); return t > 0 && Date.now() - t > 2 * 86400000; })
+        .map(function (f) { return 'signs/' + f.name; });
+      if (old.length) return sb.storage.from('sheets').remove(old);
+    }).catch(function () {});
+  }
+  $('sign-share').addEventListener('click', function () {
+    if (!signState.file) return;
+    navigator.share({ files: [signState.file], title: 'Sona Magnets sign' }).catch(function () {});
+  });
+  $('sign-close').addEventListener('click', function () { $('sign-ready').hidden = true; });
 
   /* ---------- start ---------- */
   if (!window.supabase) { show('view-login'); note('login-msg', 'The page did not finish loading. Check the connection and reload.', 'bad'); return; }

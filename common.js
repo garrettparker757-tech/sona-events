@@ -270,5 +270,30 @@
     return isPack && next - now <= 5 ? { qty: n + 1, extra: next - now, price: next } : null;
   }
 
-  window.SonaCommon = { fitMax: fitMax, normalizeFit: normalizeFit, zoomMax: zoomMax, getZoom: getZoom, setZoom: setZoom, drawFront: drawFront, overlayRect: overlayRect, drawOverlay: drawOverlay, loadOverlayImage: loadOverlayImage, overlayUrl: overlayUrl, clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
+  /* ---------- table signs as a one-page PDF ----------
+     The sign page is loaded out of sight at full size, drawn to a picture and placed on a Letter page,
+     so it prints the same from any phone or computer. Resolves with the PDF's bytes. */
+  function signPdf(href) {
+    return new Promise(function (resolve, reject) {
+      var f = document.createElement('iframe'), done = false;
+      f.setAttribute('aria-hidden', 'true'); f.setAttribute('tabindex', '-1'); f.title = 'sign';
+      f.style.cssText = 'position:fixed;left:-12000px;top:0;width:900px;height:1100px;border:0;opacity:0;pointer-events:none';
+      var timer = setTimeout(function () { finish(new Error('SIGN_TIMEOUT')); }, 45000);
+      function finish(err, buf) {
+        if (done) return; done = true; clearTimeout(timer);
+        setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 0);
+        if (err) reject(err); else resolve(buf);
+      }
+      f.onload = function () {
+        var w = f.contentWindow;
+        if (!w || !w.SonaSign) { finish(new Error('SIGN_LOAD')); return; }
+        w.SonaSign.pdf().then(function (buf) { finish(null, buf); }, function (err) { finish(err || new Error('SIGN_PDF')); });
+      };
+      f.onerror = function () { finish(new Error('SIGN_LOAD')); };
+      f.src = href + (href.indexOf('?') >= 0 ? '&' : '?') + 'embed=1';
+      document.body.appendChild(f);
+    });
+  }
+
+  window.SonaCommon = { signPdf: signPdf, fitMax: fitMax, normalizeFit: normalizeFit, zoomMax: zoomMax, getZoom: getZoom, setZoom: setZoom, drawFront: drawFront, overlayRect: overlayRect, drawOverlay: drawOverlay, loadOverlayImage: loadOverlayImage, overlayUrl: overlayUrl, clamp: clamp, cropRect: cropRect, normalize: normalize, drawCrop: drawCrop, loadPhoto: loadPhoto, priceFor: priceFor, money: money, nearestPacks: nearestPacks, packs: packs, packSizes: packSizes, oneMore: oneMore, uuid: uuid, attachEditor: attachEditor };
 })();
