@@ -59,8 +59,10 @@
   window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
   function payOnline() { return !!(state.event && state.event.pay_online && state.event.show_prices !== false); }
   /* asks our server to make a Square checkout page for the order (or check whether it is paid) */
-  async function squareCall(action, orderId) {
-    var r = await sb.functions.invoke('square', { body: { action: action, order_id: orderId } });
+  async function squareCall(action, orderId, tip) {
+    var body = { action: action, order_id: orderId };
+    if (tip) body.tip = tip;
+    var r = await sb.functions.invoke('square', { body: body });
     if (r.error) throw r.error;
     return r.data || {};
   }
@@ -521,9 +523,14 @@
     $('check-pay').hidden = cost == null;
     var online = payOnline() && cost != null;
     $('check-pay').textContent = online ? 'You pay on the next screen.' : 'You pay at the table.';
-    $('submit').textContent = STAFF ? 'Add to the print queue' : online ? 'Pay ' + C.money(cost) + ' and make my magnets' : 'Yes, make my magnets';
     $('pay-methods').hidden = !online;
-    $('tip-note').hidden = !(online && state.event.tips);
+    /* a single magnet gets a simple $1 / $2 / $3 tip choice here; bigger orders see Square's own tip choice */
+    var pickTip = online && !STAFF && state.event.tips && n === 1;
+    state.check = { cost: cost, online: online, pickTip: pickTip };
+    if (!pickTip) { state.tip = 0; state.tipChosen = false; }
+    $('tip-box').hidden = !pickTip;
+    $('tip-note').hidden = !(online && state.event.tips) || pickTip;
+    showTip();
     note('check-msg', '');
     show('view-check', 'check-title');
   }
@@ -566,6 +573,17 @@
     }
     throw last;
   }
+  function showTip() {
+    var c = state.check || {}, tip = c.pickTip ? (state.tip || 0) : 0;
+    Array.prototype.forEach.call(document.querySelectorAll('#tip-box [data-tip]'), function (b) {
+      b.setAttribute('aria-pressed', String(!!state.tipChosen && Number(b.getAttribute('data-tip')) === tip));
+    });
+    if (c.cost != null) $('check-total').textContent = 'Total ' + C.money(c.cost + tip) + (tip ? ' with a ' + C.money(tip) + ' tip' : '');
+    $('submit').textContent = STAFF ? 'Add to the print queue' : c.online ? 'Pay ' + C.money(c.cost + tip) + ' and make my magnets' : 'Yes, make my magnets';
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#tip-box [data-tip]'), function (b) {
+    b.addEventListener('click', function () { state.tip = Number(b.getAttribute('data-tip')) || 0; state.tipChosen = true; showTip(); });
+  });
   async function send(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (state.sending) return;
@@ -602,7 +620,7 @@
         await wait(1200 * (attempt + 1));
       }
       if (res.error) throw res.error;
-      var count = total(), orderId = state.orderId;
+      var count = total(), orderId = state.orderId, tip = state.check && state.check.pickTip ? (state.tip || 0) : 0;
       $('done-hello').textContent = 'You are all set, ' + name + '!';
       $('done-no').textContent = res.data;
       var cost = priceOf(count);
@@ -625,13 +643,13 @@
         $('done-hello').textContent = 'Added to the print queue';
         $('done-text').textContent = plural(count, 'magnet') + ' for "' + name + '". It is on the staff page now, ready to print with everything else.';
       }
-      state.items = []; state.orderId = null;
+      state.items = []; state.orderId = null; state.tip = 0; state.tipChosen = false;
       await draftClear();
       if (online) {
         /* the order is in; now off to Square's secure page to pay, which comes back here afterwards */
         progress('Opening the payment page.', steps, steps);
         try {
-          var pay = await squareCall('create', orderId);
+          var pay = await squareCall('create', orderId, tip);
           if (pay.url) { location.href = pay.url; return; }
         } catch (err) {}
         $('done-pay').textContent = 'The payment page did not open, so please pay at the table.';

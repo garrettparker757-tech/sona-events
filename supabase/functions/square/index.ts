@@ -84,20 +84,33 @@ async function loadOrder(orderId: string) {
   return data as any;
 }
 
+/* The tip on a payment: Square's own tip, plus a tip the guest picked on our page (single magnets),
+   which is part of the price paid above the magnets' price. */
+function tipOf(o: any, payment: any): number {
+  let tip = (payment?.tip_money?.amount || 0) / 100;
+  const count = (o?.order_photos || []).reduce((n: number, p: any) => n + (p.qty || 0), 0);
+  const paid = payment?.amount_money?.amount;
+  if (count && paid != null) {
+    const extra = paid / 100 - priceFor(count);
+    if (extra > 0.004 && extra <= 3) tip += extra;
+  }
+  return Math.round(tip * 100) / 100;
+}
+
 async function markPaid(o: any, payment: any) {
   if (o.paid_at) return;
   const cents = payment?.total_money?.amount ?? payment?.amount_money?.amount;
-  const tip = payment?.tip_money?.amount;
+  const tip = tipOf(o, payment);
   await db.from("orders").update({
     paid_at: new Date().toISOString(),
     paid_amount: cents != null ? cents / 100 : o.pay_amount,
-    tip_amount: tip ? tip / 100 : null,
+    tip_amount: tip > 0 ? tip : null,
     pay_status: "paid",
     square_payment_id: payment?.id || null,
   }).eq("id", o.id).is("paid_at", null);
 }
 
-async function create(orderId: string) {
+async function create(orderId: string, tipAsked: unknown) {
   const o = await loadOrder(orderId);
   if (!o) return json({ error: "NOT_FOUND" }, 404);
   if (o.paid_at) return json({ paid: true });
@@ -106,31 +119,36 @@ async function create(orderId: string) {
   const amount = priceFor(count);
   if (!ev?.pay_online || !ev?.show_prices || !amount) return json({ error: "NOT_ONLINE" }, 400);
   const tipsOn = ev.tips !== false;
-  if (o.pay_url && Number(o.pay_amount) === amount) return json({ url: o.pay_url, amount });
+  // a single magnet: the guest picks $1, $2 or $3 (or nothing) on our page, and it is added to the price
+  const pickTip = tipsOn && count === 1;
+  const tip = pickTip && [1, 2, 3].includes(Number(tipAsked)) ? Number(tipAsked) : 0;
+  const total = amount + tip;
+  // one payment page per order, so a payment can always be matched to it
+  if (o.pay_url) return json({ url: o.pay_url, amount: Number(o.pay_amount) || amount });
   try {
     if (!token()) throw new Error("NOT_CONNECTED");
     const loc = await location();
     const res = await square("/v2/online-checkout/payment-links", {
       method: "POST",
       body: JSON.stringify({
-        idempotency_key: o.id + "-" + amount + (tipsOn ? "-t" : ""),
+        idempotency_key: o.id + "-" + total + (pickTip ? "-p" : tipsOn ? "-t" : ""),
         quick_pay: {
-          name: "Sona Magnets order #" + o.order_no + " (" + count + (count === 1 ? " magnet)" : " magnets)"),
-          price_money: { amount: Math.round(amount * 100), currency: "USD" },
+          name: "Sona Magnets order #" + o.order_no + " (" + count + (count === 1 ? " magnet" : " magnets") + (tip ? " + $" + tip + " tip" : "") + ")",
+          price_money: { amount: Math.round(total * 100), currency: "USD" },
           location_id: loc.id,
         },
         checkout_options: {
           redirect_url: SITE + "/e/" + ev.slug + "?paid=" + o.id,
           ask_for_shipping_address: false,
-          // optional tip: the guest picks it (or not) on Square's page; the choices come from the Square tip settings
-          allow_tipping: tipsOn,
+          // bigger orders: an optional tip on Square's page, with the choices from the Square tip settings
+          allow_tipping: tipsOn && !pickTip,
         },
         payment_note: "Sona Events " + ev.name + ", order #" + o.order_no + " for " + o.guest_name + " (" + o.id + ")",
       }),
     });
     const link = res.payment_link;
-    await db.from("orders").update({ pay_status: "pending", pay_url: link.url, pay_amount: amount, square_order_id: link.order_id }).eq("id", o.id);
-    return json({ url: link.url, amount });
+    await db.from("orders").update({ pay_status: "pending", pay_url: link.url, pay_amount: total, square_order_id: link.order_id }).eq("id", o.id);
+    return json({ url: link.url, amount: total });
   } catch (err) {
     console.error("create failed", String(err));
     // let the order go to the print queue as "pay at the table" instead of holding it forever
@@ -149,7 +167,7 @@ async function status(orderId: string) {
     for (const t of so?.tenders || []) {
       if (!t.payment_id) continue;
       const pay = (await square("/v2/payments/" + t.payment_id)).payment;
-      if (pay?.status === "COMPLETED") { await markPaid(o, pay); return json({ paid: true, order_no: o.order_no, tip: (pay?.tip_money?.amount || 0) / 100 }); }
+      if (pay?.status === "COMPLETED") { await markPaid(o, pay); return json({ paid: true, order_no: o.order_no, tip: tipOf(o, pay) }); }
     }
   } catch (err) { console.error("status failed", String(err)); }
   return json({ paid: false, url: o.pay_url, order_no: o.order_no });
@@ -217,7 +235,7 @@ async function webhook(req: Request) {
     const evt = JSON.parse(raw);
     const pay = evt?.data?.object?.payment;
     if (pay && pay.status === "COMPLETED" && pay.order_id) {
-      const { data } = await db.from("orders").select("id, paid_at, pay_amount").eq("square_order_id", pay.order_id).maybeSingle();
+      const { data } = await db.from("orders").select("id, paid_at, pay_amount, order_photos(qty)").eq("square_order_id", pay.order_id).maybeSingle();
       if (data) await markPaid(data, pay);
     }
   } catch (err) { console.error("webhook failed", String(err)); }
@@ -233,7 +251,7 @@ Deno.serve(async (req) => {
   await loadSecrets();
   if (req.headers.get("x-square-hmacsha256-signature")) return webhook(req);
   const body = await req.json().catch(() => ({}));
-  if (body.action === "create") return create(String(body.order_id || ""));
+  if (body.action === "create") return create(String(body.order_id || ""), body.tip);
   if (body.action === "status") return status(String(body.order_id || ""));
   if (body.action === "check") return check();
   return json({ error: "BAD_ACTION" }, 400);

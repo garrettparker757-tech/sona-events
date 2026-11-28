@@ -208,6 +208,11 @@ ul.plain li { display: flex; align-items: center; justify-content: space-between
 .seg button { border: 0; background: var(--paper); padding: 8px 16px; font-family: var(--display); font-weight: 600; cursor: pointer; }
 .seg button + button { border-left: 2.5px solid var(--ink); }
 .seg button[aria-pressed=true] { background: var(--sun); }
+.tipbox { display: flex; flex-direction: column; gap: 8px; align-items: stretch; background: var(--sun-soft); border: 2px dashed var(--ink); border-radius: 18px; padding: 12px 14px; }
+.tiphead { margin: 0; font-family: var(--display); font-weight: 600; }
+.tiphead span { display: block; font-family: inherit; font-weight: 400; font-size: 0.92rem; }
+.tipseg { align-self: stretch; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; }
+.tipseg button { min-height: 46px; font-size: 1.02rem; padding: 8px 6px; }
 .qr { align-self: center; padding: 12px; background: #fff; border: 2.5px solid var(--ink); border-radius: 18px; }
 .qr img, .qr canvas { display: block; width: 220px; height: 220px; }
 .link { word-break: break-all; font-size: 0.9rem; }
