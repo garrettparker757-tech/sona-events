@@ -4,11 +4,13 @@
   var C = window.SonaCommon, CFG = window.SONA;
   var $ = function (id) { return document.getElementById(id); };
   var parts = location.pathname.split('/').filter(Boolean);
-  var slug = (parts[0] === 'e' && parts[1]) ? decodeURIComponent(parts[1]) : (new URLSearchParams(location.search).get('e') || '');
+  /* guests: /e/<event>; staff ordering for themselves: /admin/order/<event>, which the home screen app keeps inside the app */
+  var STAFF_PATH = parts[0] === 'admin' && parts[1] === 'order' && !!parts[2];
+  var slug = (parts[0] === 'e' && parts[1]) ? decodeURIComponent(parts[1]) : STAFF_PATH ? decodeURIComponent(parts[2]) : (new URLSearchParams(location.search).get('e') || '');
   slug = slug.toLowerCase();
   /* Staff mode (/e/<event>?staff=1): a signed-in staff member makes an order themselves.
      Same photo tools, but no prices or payment, any event status, and it goes straight to the print queue. */
-  var STAFF = new URLSearchParams(location.search).get('staff') === '1';
+  var STAFF = STAFF_PATH || new URLSearchParams(location.search).get('staff') === '1';
   var DKEY = (STAFF ? 'staff|' : '') + slug;   /* staff and guest drafts on one device stay apart */
 
   var state = { event: null, items: [], editing: null, nextId: 1, orderId: null, sending: false, busy: false, overlay: null };

@@ -1,14 +1,30 @@
 {
   "rewrites": [
-    { "source": "/e/:slug", "destination": "/event.html" },
-    { "source": "/admin", "destination": "/admin.html" }
+    {
+      "source": "/admin/order/:slug",
+      "destination": "/event.html"
+    },
+    {
+      "source": "/e/:slug",
+      "destination": "/event.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
       ]
     }
   ]

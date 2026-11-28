@@ -298,7 +298,9 @@
     $('sign-name').textContent = ev.name;
     $('sign-qr').href = signUrl(ev);
     /* staff's own order: same photo tools, no payment, no limit, any event status */
-    $('own-order').href = '/e/' + encodeURIComponent(ev.slug) + '?staff=1';
+    $('own-order').href = '/admin/order/' + encodeURIComponent(ev.slug) + '?staff=1';
+    /* the home screen app opens new tabs in a separate browser that is not signed in, so stay in the app */
+    if (asApp()) $('own-order').removeAttribute('target'); else $('own-order').setAttribute('target', '_blank');
     /* the "How it works" sign matches how this event takes payment */
     $('sign-how').href = '/sign.html?sign=how' + (ev.pay_online && ev.show_prices !== false ? '' : '&pay=table');
     $('set-name').value = ev.name; $('set-max').value = ev.max_magnets;
